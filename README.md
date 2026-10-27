@@ -1,4 +1,4 @@
-# Routine — study routine tracker
+# Routine - study routine tracker
 
 A web app for a daily study routine: today's topics with ticks, study hours, Pomodoro timer,
 pending work, spaced revision, notes, print, CSV import/export, English/বাংলা, light/dark,
@@ -18,7 +18,7 @@ Both the week-block format (like the BCS file) and the flat `day,subject,priorit
 The same table opens for a week (tap its card on the *Routine* page) and for *+ Add topics*.
 A week card's ✕ removes the week: its topics go to Archive and later weeks move up (Undo works).
 
-Only Python 3.8+ is needed — no packages to install.
+Only Python 3.8+ is needed - no packages to install.
 
 ## Run it on this computer
 
@@ -43,7 +43,7 @@ an app icon. Only do this on a network you trust (see *Login* below).
 
 ## Login and admin
 
-- Login is by phone number only — **no password or OTP yet**. Anyone who can reach the app and knows a
+- Login is by phone number only - **no password or OTP yet**. Anyone who can reach the app and knows a
   phone number can open that account. Fine on your own computer; add real authentication (OTP or a
   password) before sharing a public link widely.
 - A new number asks for a name and creates the account.
@@ -68,7 +68,7 @@ PythonAnywhere's free plan runs Python web apps and keeps files (so the SQLite d
    ```
 
 5. Press *Reload*. The app is at `https://<you>.pythonanywhere.com`. Open it and create your
-   account first — that makes you the admin.
+   account first - that makes you the admin.
 
 The free plan asks you to press "Run until 3 months from today" on the *Web* tab every three months.
 Any other WSGI host works the same way (`wsgi.py` exposes `application`).
@@ -100,7 +100,7 @@ launcher/            desktop launcher, stop script, desktop-icon installer
 
 ### Routine CSV format
 
-The template is the week-block layout: a row `সপ্তাহ N (মাস M) — Title`, a `Day,…` header row naming
+The template is the week-block layout: a row `সপ্তাহ N (মাস M) - Title`, a `Day,…` header row naming
 the subjects, then `Day 1`…`Day 7` rows. In a cell, `|` separates topics and a trailing `[High]`,
 `[Medium]` or `[Low]` sets the priority. Inside the app, *Routine → Upload CSV* takes the simple flat
 format instead (`day,subject,priority,subpart`; *Template* downloads an example).

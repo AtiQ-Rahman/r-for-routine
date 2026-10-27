@@ -94,10 +94,13 @@ case'ceback':imp=null;break;
 case'qadd':qadd=D.k+'|'+D.o;focusSel='#qat';break;
 case'qcancel':qadd='';break;
 case'qsave':{const t=$('#qat').value.trim();if(!t){toast(T('m.writeTopic'));return}const[w,d]=od(+D.o);P.push({id:++uid,w,d,s:D.k,t,p:'',ow:w,od:d,arch:false,from:''});qadd='';toast(T('m.added'));break}
-case'focadd':{const t=$('#fadd').value.trim();if(!t){toast(T('m.writeSomething'));return}FOC.push({id:++fid,o:co(),t,done:false,from:''});focusSel='#fadd';toast(T('foc.added'));break}
+case'focadd':{const t=$('#fadd').value.trim(),k=$('#fos').value,pp=$('#fap').value,est=Math.max(0,num($('#fam').value)|0);if(!t){toast(T('m.writeSomething'));return}FF={s:k,p:pp};focusSel='#fadd';
+// a subject makes it a real topic of today (and keeps it in focus); none = an own to-do outside the routine
+if(k){const[w,d]=od(co());ensureWeeks(w);P.push({id:++uid,w,d,s:k,t,p:pp,est,ow:w,od:d,arch:false,from:''});pin.add(uid);toast(T('foc.addedTopic',{s:sn(k,w)}))}
+else{FOC.push({id:++fid,o:co(),t,p:pp,est,done:false,from:''});toast(T('foc.added'))}break}
 case'focdel':FOC=FOC.filter(f=>f.id!=+D.f);toast(T('foc.removed'),1);break;
 case'pin':pin.has(id)?pin.delete(id):pin.add(id);toast(pin.has(id)?T('foc.pinned'):T('foc.removed'));break;
-case'printopen':printOpen=true;PR={a:ord(cur.w,1),b:Math.min(ord(cur.w,7),planLen()),date:true,done:true,hrs:true,notes:true};break;
+case'printopen':printOpen=true;PR={a:ord(cur.w,1),b:Math.min(ord(cur.w,7),planLen()),plan:true,date:true,done:true,hrs:true,notes:true};break;
 case'prr':PR={a:+D.a,b:+D.b,...prOpts()};break;
 case'prno':printOpen=false;break;
 case'prgo':{const L=planLen(),a1=Math.max(1,Math.min(L,+$('#pra').value||1)),b1=Math.max(a1,Math.min(L,+$('#prb').value||a1));$('#print').innerHTML=printDoc(a1,b1,prOpts());printOpen=false;render();setTimeout(()=>window.print(),50);return}
@@ -118,7 +121,7 @@ case'rn':renaming=D.k+D.w;editing=0;adding=null;focusSel='#rnm';break;
 case'rnsave':{const v=$('#rnm').value.trim();if(!v){toast(T('m.writeName'));return}if(subjKey(v)&&subjKey(v)!=D.k){toast(T('subj.exists'));return}SNAME[D.k]=v;renaming='';toast(T('subj.renamed'));break}
 case'ladsave':{const l=[...new Set($('#lad').value.split(',').map(Number).filter(n=>n>0))].sort((x,y)=>x-y);if(!l.length){toast(T('m.oneNumber'));return}LAD=l;toast(T('m.saved'));break}
 case'note':noteOpen=noteOpen==id?0:id;focusSel='#nt';break;
-case'notesave':{const v=$('#nt').value.trim();if(v)notes[id]=v;else delete notes[id];noteOpen=0;toast(T('m.saved'));break}
+case'notesave':{const v=$('#nt').value.trim();if(v)notes[id]=v;else delete notes[id];const em=$('#nest').value;p.est=em===''?0:Math.max(0,num(em)|0);const sm=$('#nspent').value;if(sm!==''){const want=Math.max(0,num(sm)|0)*60,cur0=Math.round((p.sec||0)/60)*60;if(want!=cur0)addSec(co(),want-(p.sec||0),{p:id})}noteOpen=0;toast(T('m.saved'));break}
 case'notedel':delete notes[id];noteOpen=0;break;
 case'notecancel':noteOpen=0;break;
 case'rfsave':{const v=$('#rf').value.trim(),i=refl.findIndex(r=>r.w==rfDay.w&&r.d==rfDay.d);if(!v){toast(T('m.writeSomething'));return}i>=0?refl[i].t=v:refl.push({w:rfDay.w,d:rfDay.d,t:v});toast(T('m.saved'));break}
@@ -126,13 +129,13 @@ case'rfedit':rfDay={w:+D.w,d:+D.d};tab='notes';scrollTo(0,0);break;
 case'rfdel':if(!confirm(T('notes.delQ')))return;refl=refl.filter(r=>!(r.w==D.w&&r.d==D.d));break;
 case'edit':editing=id;adding=null;renaming='';focusSel='#edt';break;
 case'cancel':editing=0;bedit=0;adding=null;renaming='';break;
-case'save':{const t=$('#edt').value.trim(),[w,d]=$('#edd').value.split('.').map(Number);if(!t){toast(T('m.empty'));return}if(p.w!=w||p.d!=d)p.from=lab(p.w,p.d);p.t=t;p.s=$('#eds').value||p.s;p.p=$('#edp').value;p.w=w;p.d=d;editing=0;toast(T('m.savedTick'));break}
+case'save':{const t=$('#edt').value.trim(),[w,d]=$('#edd').value.split('.').map(Number);if(!t){toast(T('m.empty'));return}if(p.w!=w||p.d!=d)p.from=lab(p.w,p.d);p.t=t;p.s=$('#eds').value||p.s;p.p=$('#edp').value;p.est=Math.max(0,num($('#edm').value)|0);p.w=w;p.d=d;editing=0;toast(T('m.savedTick'));break}
 case'arch':p.arch=true;toast(T('m.archived'),1);break;
 case'restore':p.arch=false;toast(T('m.restored'));break;
 case'addopen':adding={w:+D.w,d:+D.d,k:D.k||''};editing=0;renaming='';focusSel='#addt';break;
-case'addsave':{const t=$('#addt').value.trim(),sv=$('#adds').value;if(!sv){toast(T('tf.noSubj'));return}if(!t){toast(T('m.writeTopic'));return}P.push({id:++uid,w:adding.w,d:adding.d,s:sv,t,p:'',ow:adding.w,od:adding.d,arch:false,from:''});adding=null;toast(T('m.added'));break}
+case'addsave':{const t=$('#addt').value.trim(),sv=$('#adds').value;if(!sv){toast(T('tf.noSubj'));return}if(!t){toast(T('m.writeTopic'));return}P.push({id:++uid,w:adding.w,d:adding.d,s:sv,t,p:'',est:Math.max(0,num($('#addm').value)|0),ow:adding.w,od:adding.d,arch:false,from:''});adding=null;toast(T('m.added'));break}
 case'export':dl('routine.csv',csv([H,...csvRows()]));return;
-case'template':{const sa=SUBJ[0]?sn(SUBJ[0][0]):T('subject'),sb=SUBJ[1]?sn(SUBJ[1][0]):sa;dl('routine-import-template.csv',csv([['id','day','subject','priority','subpart'],['',1,sa,'',T('tpl.ex1')],['',1,sb,'High',T('tpl.ex2')],['',2,sb,'',T('tpl.ex3')],['',10,sb,'',T('tpl.ex4')]]));return}
+case'template':{const sa=SUBJ[0]?sn(SUBJ[0][0]):T('subject'),sb=SUBJ[1]?sn(SUBJ[1][0]):sa;dl('routine-import-template.csv',csv([['id','day','subject','priority','minutes','subpart'],['',1,sa,'',120,T('tpl.ex1')],['',1,sb,'High',60,T('tpl.ex2')],['',2,sb,'',45,T('tpl.ex3')],['',10,sb,'','',T('tpl.ex4')]]));return}
 case'upload':$('#csvFile').click();return;
 case'impmode':imp.mode=D.m;break;
 case'impgo':{const fromFile=!imp.kind||imp.kind=='file',w=impApply();if(w&&fromFile){wkW=w;wkSel=1;wEdit=true;tab='week';scrollTo(0,0)}break}
@@ -148,6 +151,7 @@ case'theme':SET.theme=D.v;break;
 case'themeq':SET.theme=document.documentElement.dataset.theme=='dark'?'light':'dark';break;
 case'stog':sp(D.k,!gp(D.k));break;
 case'stest':ding(D.v,1);return;
+case'atest':alarmOn();setTimeout(alarmOff,3000);return;
 case'notif':if(SET.notif){SET.notif=false;break}if(!('Notification' in window)){toast(T('set.notifNo'));return}Notification.requestPermission().then(x=>{SET.notif=x=='granted';toast(SET.notif?T('set.notifOn'):T('set.notifDenied'));render()});return;
 case'backup':dl(`routine-backup-${todayISO()}.json`,snap(),'application/json');return;
 case'tplreset':{if(!confirm(T('set.resetQ')))return;try{const r=await api('GET','template?today='+todayISO()),keep=SET;restore(r.state);SET=keep;syncCur();BD.day=co();wkW=cur.w;wkSel=cur.d;toast(T('set.resetDone'),1)}catch(e){toast(errT(e))}break}
@@ -163,7 +167,7 @@ case'pskip':credit();pomoEnd();return;
 case'pwatch':PO.o=co();PO.kind='watch';PO.acc=0;PO.t0=PO.last=Date.now();PO.endAt=8.64e15;PO.total=0;PO.stage='run';clearInterval(PO.iv);PO.iv=setInterval(pomoTick,250);break;
 case'plog':{const m=+D.v;addSec(co(),m*60,PO.ref);toast(T(m>0?'po.logged':'po.removed',{m:Math.abs(m),t:hm(SEC[co()])}));break}
 case'pnext':pomoStart(PO.next);break;
-case'pstop':if(SET.fg.on&&SET.fg.strict&&PO.kind=='focus'&&(PO.stage=='run'||PO.stage=='pause')){if(!confirm(T('fg.stopQ')))return;fgDay(PO.o).b++}credit();clearInterval(PO.iv);FG=null;toast(T('po.stopped',{t:hm(SEC[PO.o])}));PO={stage:'off'};exitFs();break;
+case'pstop':if(SET.fg.on&&SET.fg.strict&&PO.kind=='focus'&&(PO.stage=='run'||PO.stage=='pause')){if(!confirm(T('fg.stopQ')))return;fgDay(PO.o).b++}credit();clearInterval(PO.iv);FG=null;alarmOff();toast(T('po.stopped',{t:hm(SEC[PO.o])}));PO={stage:'off'};exitFs();break;
 case'pmin':if(PO.stage=='ready')PO={stage:'off'};else PO.fs=false;exitFs();break;
 case'pmax':PO.fs=true;break;
 case'psnd':SET.snd.on=!SET.snd.on;break;
@@ -172,7 +176,7 @@ case'pdone':{const r=PO.ref;if(r.f){const x=pref(r);if(x)x.done=!x.done}else don
 case'undo':if(undoSnap){const keep=[SET,SEC,HRC];restore(undoSnap);[SET,SEC,HRC]=keep;undoSnap=null;imp=null;closing=false;syncCur();wkW=cur.w;toast(T('undone'))}break;
 case'build':tab='plan';scrollTo(0,0);break;
 case'tfadd':{const o=+D.o,pre=D.pre,k=$('#'+pre+'s').value,t=$('#'+pre+'t').value.trim(),pp=$('#'+pre+'p').value;focusSel='#'+pre+'t';if(!t){toast(T('m.writeTopic'));break}
-const[w,d]=od(o);ensureWeeks(w);P.push({id:++uid,w,d,s:k,t,p:pp,ow:w,od:d,arch:false,from:''});TF={s:k,p:pp};planOpen.add(w);toast(T('tf.added',{s:sn(k,w),d:lab(w,d)}));break}
+const[w,d]=od(o);ensureWeeks(w);const mn=$('#'+pre+'m');P.push({id:++uid,w,d,s:k,t,p:pp,est:mn?Math.max(0,num(mn.value)|0):0,ow:w,od:d,arch:false,from:''});TF={s:k,p:pp};planOpen.add(w);toast(T('tf.added',{s:sn(k,w),d:lab(w,d)}));break}
 
 }
 render()}
@@ -189,15 +193,17 @@ const c=e.target.closest('.check');if(c){const i=+c.dataset.id;done.has(i)?done.
 const a=e.target.closest('[data-act]');if(a)action(a)});
 document.addEventListener('keydown',e=>{if(PO.stage!='off'&&PO.fs&&!VIEW){if(e.key=='Escape'){e.preventDefault();$('#pomo [data-act=pmin]')?.click();return}if(e.key==' '&&!/INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName)){e.preventDefault();$('#pomo [data-act=ppause],#pomo [data-act=presume]')?.click();return}}
 if(e.key=='Escape'&&(closing||imp||CE||printOpen||projUI)){closing=false;if(imp)imp=null;else CE=null;printOpen=false;projUI=null;render();return}if(e.key!='Enter')return;const i=e.target.id;
-const K={prn:'projrensave',pnn:'projcreate',lphone:'login',lname:'login',rnm:'rnsave',edt:'save',edd:'save',eds:'save',edp:'save',addt:'addsave',rM:'remadd',snew:'sadd',qat:'qsave',fadd:'focadd',anm:'aadd',aph:'aadd'}[i];
+const K={prn:'projrensave',pnn:'projcreate',lphone:'login',lname:'login',rnm:'rnsave',edt:'save',edd:'save',eds:'save',edp:'save',addt:'addsave',rM:'remadd',snew:'sadd',qat:'qsave',fadd:'focadd',fam:'focadd',anm:'aadd',aph:'aadd'}[i];
 if(K){$(`[data-act=${K}]`)?.click();return}
-if(i=='tft'){$(`[data-act=tfadd][data-pre="${i.slice(0,2)}"]`).click();return}});
-document.addEventListener('change',e=>{const tg=e.target;if(VIEW&&(tg.dataset.tgt!==undefined||tg.dataset.set||tg.dataset.setv||tg.id=='startDate'||tg.id=='csvFile'||tg.dataset.ce)){toast(T('ro.blocked'));render();return}
+if(i=='tft'||i=='tfm'){$(`[data-act=tfadd][data-pre="${i.slice(0,2)}"]`).click();return}});
+document.addEventListener('change',e=>{const tg=e.target;if(VIEW&&(tg.dataset.tgt!==undefined||tg.dataset.set||tg.dataset.setv||tg.dataset.smin||tg.id=='startDate'||tg.id=='csvFile'||tg.dataset.ce)){toast(T('ro.blocked'));render();return}
 const k=tg.dataset.imp;if(k){imp.off.has(k)?imp.off.delete(k):imp.off.add(k);focusSel=`[data-imp="${k}"]`;render();return}
 if(tg.dataset.tgt!==undefined){for(let o=1;o<co();o++)if(TGD[o]==null)TGD[o]=TG;TG=+tg.value;toast(T('set.targetT',{n:TG}));render();return}
 if(tg.id=='startDate'&&tg.value){START=tg.value;syncCur();wkW=cur.w;wkSel=cur.d;BD.day=co();render();return}
 if(/^tf[sp]$/.test(tg.id)){TF[tg.id[2]]=tg.value;return}
+if(tg.id=='fos'||tg.id=='fap'){FF[tg.id=='fos'?'s':'p']=tg.value;return}
 if(tg.dataset.setv){sp(tg.dataset.setv,tg.value);render();return}
+if(tg.dataset.smin){const v=num(tg.value);if(Number.isInteger(v)&&v>0)SMIN[tg.dataset.smin]=v;else delete SMIN[tg.dataset.smin];render();return}
 const sk=tg.dataset.set;if(sk){const mn=+tg.min,mx=+tg.max;sp(sk,Math.min(mx,Math.max(mn,+tg.value||mn)));render();return}
 if(tg.id=='csvFile'){const f=tg.files[0];tg.value='';if(f)f.text().then(t=>{openCE(f.name,t);render()});return}
 if(tg.id=='pnf'){const f=tg.files[0];if(f)f.text().then(t=>{projUI.text=t;projUI.file=f.name;projUI.name=$('#pnn').value||f.name.replace(/\.csv$/i,'');projUI.start=$('#pns').value;projUI.err='';render()});return}
@@ -208,6 +214,11 @@ if(tg.id=='ceo'){CE.only=tg.checked;render();return}});
 document.addEventListener('input',e=>{if(e.target.dataset.ce&&e.target.tagName=='INPUT'){ceInput(e.target);return}if(e.target.dataset.set=='snd.vol')SET.snd.vol=+e.target.value;if(e.target.id=='cr')closeDraft=e.target.value;if(e.target.id=='lphone')LG.phone=e.target.value});
 document.addEventListener('toggle',e=>{const t=e.target;if(t.matches&&t.matches('details.fold'))FOLD[t.dataset.fold]=t.open},true);
 window.addEventListener('blur',()=>setTimeout(()=>{if(fgAway())fgLeave()},60));window.addEventListener('focus',()=>setTimeout(fgReturn,60));
+// closing the window or reloading always asks first ("Leave site?"); the browser decides the wording
+window.addEventListener('beforeunload',e=>{if(!ME)return;flush(true);e.preventDefault();e.returnValue=''});
+// really closing during a focus session: remember when, so reopening counts that time as away
+window.addEventListener('pagehide',()=>{if(ME&&!VIEW&&PO.stage=='run'&&SET.fg.on&&(PO.kind=='focus'||PO.kind=='watch')){credit();PO.closedAt=FG?FG.at:Date.now();alarmOff();savePomo()}});
+window.addEventListener('pageshow',e=>{if(e.persisted&&PO.closedAt){delete PO.closedAt;savePomo()}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)fgLeave();else setTimeout(fgReturn,60);if(document.hidden)flush(true);else if(ME&&!VIEW){remCheck();render()}});
 try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if(SET.theme=='system')applyTheme()})}catch(e){}
 setInterval(remCheck,30000);

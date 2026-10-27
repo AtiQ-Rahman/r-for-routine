@@ -6,8 +6,8 @@ const pad=n=>String(n).padStart(2,'0'),clone=o=>JSON.parse(JSON.stringify(o));
 
 // ---------- the user's routine (one JSON document, saved on the server) ----------
 const SUBJ=[],SNAME={},WT={},ALL=[];
-let FGD={},P=[],uid=0,done=new Set(),START='',notes={},TG=10,TGD={},HR={},revs=[],rid=0,LAD=[1,3,7,14,30],refl=[],R=[],RM=[],FOC=[],fid=0,pin=new Set(),SEC={},HRC={},PNAME='',closed={};
-const SET0={lang:'en',notif:false,theme:'system',pomo:{focus:25,short:5,long:15,every:4,auto:false,autoHour:true},snd:{on:true,hour:true,vol:.6},fg:{on:true,grace:10,mode:'pause',remind:true,blur:false,strict:false,strictMin:2}};
+let SMIN={},FGD={},P=[],uid=0,done=new Set(),START='',notes={},TG=10,TGD={},HR={},revs=[],rid=0,LAD=[1,3,7,14,30],refl=[],R=[],RM=[],FOC=[],fid=0,pin=new Set(),SEC={},HRC={},PNAME='',closed={};
+const SET0={lang:'en',notif:false,theme:'system',pomo:{focus:25,short:5,long:15,every:4,auto:false,autoHour:true},snd:{on:true,hour:true,vol:.6},fg:{on:true,grace:10,mode:'pause',alert:'alarm',blur:true,strict:false,strictMin:2}};
 let SET=clone(SET0);
 
 // ---------- screen state ----------
@@ -17,7 +17,7 @@ let tab='dash',cur={w:1,d:1},wkW=1,wkSel=1,rfDay={w:1,d:1},noteOpen=0,editing=0,
 const TKEY='routine-token',LKEY='routine-lang';
 let ME=null,TOKEN=null,REV=0,lastSaved='',saveTimer=0,LG={phone:'',need:false,err:''},ADM=null,VIEW=null,OWN=null;
 // projects: PROJ = the open one, PROJS = list with server summaries; Settings (SET) belong to the user, not a project
-let PROJ=null,PROJS=[],projUI=null,OV=null,CE=null,lastPrefs='',prefTimer=0,FOLD={};
+let PROJ=null,PROJS=[],projUI=null,OV=null,CE=null,lastPrefs='',prefTimer=0,FOLD={},FF={s:'',p:''};
 try{TOKEN=localStorage.getItem(TKEY)}catch(e){}
 
 // ---------- language ----------
@@ -58,22 +58,27 @@ const revsOn=o=>revs.filter(r=>r.o==o),overdueRevs=()=>revs.filter(r=>!r.done&&r
 // HR[o] = hours studied that day; TGD[o] = that day's target (frozen once the day is past), else current TG
 const hrs=o=>HR[o]||0,tgt=o=>TGD[o]??TG;
 function streak(){let o=co(),n=0;if(hrs(o)<tgt(o))o--;while(o>=1&&hrs(o)>=tgt(o)){n++;o--}return n}
+// planned minutes: a topic's own estimate, else its subject's default (Settings → Subjects)
+const estOf=p=>p.est>0?p.est:(SMIN[p.s]||0),fmtM=m=>hm((m||0)*60),hShort=m=>m>=60?(Math.round(m/6)/10)+'h':m+'m';
+const planMin=o=>P.reduce((a,p)=>a+(!p.arch&&ord(p.w,p.d)==o?estOf(p):0),0)+FOC.reduce((a,f)=>a+(f.o==o?f.est||0:0),0);
+// first-time defaults: a subject that belongs to only a few weeks is that week's main subject (3 h), everyday ones 1 h
+function defaultSMIN(){const wk={};P.forEach(p=>(wk[p.s]=wk[p.s]||new Set()).add(p.w));const o={};for(const k in wk)o[k]=wk[k].size<=3?180:60;return o}
 const sorted=()=>[...refl].sort((a,b)=>ord(b.w,b.d)-ord(a.w,a.d));
 const mmss=ms=>{const t=Math.max(0,Math.ceil(ms/1000));return `${pad(Math.floor(t/60))}:${pad(t%60)}`};
 const hm=sec=>{const m=Math.floor((sec||0)/60);return m>=60?T('t.hm',{h:Math.floor(m/60),m:pad(m%60)}):T('t.min',{m})};
 
 // ---------- whole-state snapshot: saved to the server, also used for Undo ----------
-function snapObj(){return{v:1,PNAME,P,uid,done:[...done],START,notes,TG,TGD,HR,revs,rid,LAD,refl,R,RM,FOC,fid,pin:[...pin],SUBJ,SNAME,WT,nw:ALL.length/7,SEC,HRC,closed,FGD}}
+function snapObj(){return{v:1,PNAME,P,uid,done:[...done],START,notes,TG,TGD,HR,revs,rid,LAD,refl,R,RM,FOC,fid,pin:[...pin],SUBJ,SNAME,WT,nw:ALL.length/7,SEC,HRC,closed,FGD,SMIN}}
 const snap=()=>JSON.stringify(snapObj());
 function restore(j){const o=typeof j=='string'?JSON.parse(j):j;
 PNAME=o.PNAME||'';P=o.P||[];uid=o.uid||P.reduce((a,p)=>Math.max(a,p.id),0);done=new Set(o.done||[]);START=o.START||todayISO();notes=o.notes||{};TG=o.TG||10;TGD=o.TGD||{};HR=o.HR||{};
 revs=o.revs||[];rid=o.rid||0;LAD=o.LAD||[1,3,7,14,30];refl=o.refl||[];R=o.R||[];RM=o.RM||[];FOC=o.FOC||[];fid=o.fid||0;pin=new Set(o.pin||[]);SEC=o.SEC||{};HRC=o.HRC||{};closed=o.closed||{};FGD=o.FGD||{};
 SUBJ.splice(0,SUBJ.length,...(o.SUBJ||[]));for(const k in SNAME)delete SNAME[k];Object.assign(SNAME,o.SNAME||{});for(const k in WT)delete WT[k];Object.assign(WT,o.WT||{});
-ALL.length=0;ensureWeeks(Math.max(1,o.nw||1));return migrateMain()}
+ALL.length=0;ensureWeeks(Math.max(1,o.nw||1));const mm=migrateMain();if(!o.SMIN){SMIN=defaultSMIN();return true}SMIN=o.SMIN;return mm}
 const mergeSet=st=>{st=st||{};return{...SET0,...st,pomo:{...SET0.pomo,...st.pomo},snd:{...SET0.snd,...st.snd},fg:{...SET0.fg,...st.fg}}};
 // older routines had one "main" subject whose name changed by week: give those topics real subjects
 function migrateMain(){if(!SUBJ.some(s=>s[0]=='main')&&!P.some(p=>p.s=='main'))return false;const before=new Set(SUBJ.map(s=>s[0]));
-P.forEach(p=>{if(p.s=='main'){const n=String(WT[p.w]||T('subj.main')).split(' — ')[0].trim();p.s=getSubj(n)}});
+P.forEach(p=>{if(p.s=='main'){const n=String(WT[p.w]||T('subj.main')).split(' - ')[0].trim();p.s=getSubj(n)}});
 const i=SUBJ.findIndex(s=>s[0]=='main');if(i>=0)SUBJ.splice(i,1);
 const made=SUBJ.filter(s=>!before.has(s[0]));SUBJ.splice(0,SUBJ.length,...made,...SUBJ.filter(s=>before.has(s[0])));return true}
 

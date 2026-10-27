@@ -1,4 +1,4 @@
-/* Routine — styles (light + dark tokens, app, timer, print) */
+/* Routine - styles (light + dark tokens, app, timer, print) */
 
 :root{--navy:#1F4E5F;--navy-deep:#163A47;--blue:#2E6E8E;--gold:#D6A700;--gold-bright:#F0BE0A;--paper:#FAF8F4;--paper-warm:#F2EDE4;--ink:#1A1A1A;--ink-soft:#4A4A4A;--muted:#817E76;--line:#DDD6C9;--white:#FFFFFF;--red:#B5121B;--shadow:0 8px 26px rgba(31,78,95,.07);--on-navy:#fff;--gold-bg:#F8F3DF;--red-bg:#F9E9E6;--blue-bg:#E6EEF1;--line-soft:#EEE9E0;--gold-ink:#9C7B00;--red-line:#EBC8C2;--gold-line:#EAD9A0;--blue-line:#C9DAE0;--muted-line:#B9B4A9;--note-bg:#F7F2E8;--topbar:rgba(250,248,244,.94)}
 :root[data-theme=dark]{color-scheme:dark;--navy:#6FB0CC;--navy-deep:#E3EEF2;--blue:#8CC3D8;--gold:#E0B21A;--paper:#11181B;--paper-warm:#222C31;--ink:#ECEAE5;--ink-soft:#CFCCC5;--muted:#8E999D;--line:#2D393E;--white:#192226;--red:#F08A8A;--shadow:0 8px 26px rgba(0,0,0,.25);--on-navy:#0E1A1F;--gold-bg:#3A3215;--red-bg:#3A1F21;--blue-bg:#1D3540;--line-soft:#243035;--gold-ink:#E9C75A;--red-line:#5A2E31;--gold-line:#5A4C1C;--blue-line:#2F5363;--muted-line:#4A575C;--note-bg:#232B2E;--topbar:rgba(17,24,27,.92)}
@@ -261,3 +261,14 @@ details.fold .fbody{margin-top:18px}details.fold:not([open]){padding-bottom:22px
 /* print: Bangla-capable font, ruled notes row */
 #print{font-family:Inter,"Tiro Bangla","Noto Sans Bengali",sans-serif}
 .pr-note{height:48px;background:repeating-linear-gradient(to bottom,transparent 0 23px,#bbb 23px 24px)}
+
+/* topic time: estimates and plan */
+.tag.over{background:var(--red-bg);color:var(--red)}.plnote.over{color:var(--red)}
+.tform{grid-template-columns:minmax(150px,210px) minmax(0,1fr) 92px 140px auto}
+@media(max-width:560px){.tform{grid-template-columns:1fr 1fr}.tform input[type=text]{grid-column:1/-1;grid-row:1}.tform .tmin{grid-column:1}.tform select:last-of-type{grid-column:2}.tform button{grid-column:1/-1}}
+.smin{display:inline-flex;align-items:center;gap:4px;margin-left:auto;white-space:nowrap}.smin input{width:64px;padding:4px 6px;font-size:12px}
+.cetable .cmin{width:76px}
+.fsug{padding:9px 0}.fsug>span{display:flex;flex-direction:column;gap:2px;min-width:0}.fsug .tasktitle{margin:0;font-size:13px}.fsug small{font-size:11px;color:var(--muted)}
+/* print: blank boxes to write planned time by hand */
+.pr-it>span:not(.bx):not(.pr-mb){flex:1}.pr-mb{width:26px;height:11px;border:1px solid #333;flex:none;margin-top:3px}.pr-u{font-size:9px;color:#555;margin-top:3px}
+.pr-box{display:inline-block;width:30px;height:11px;border:1px solid #333;vertical-align:middle}

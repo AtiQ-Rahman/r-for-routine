@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Routine — study routine tracker.
+"""Routine - study routine tracker.
 
 Python standard library only (no pip install needed).
 
 Run on your computer:   python3 server.py            -> http://127.0.0.1:8765
 Let a phone on the same Wi-Fi open it:   python3 server.py --host 0.0.0.0
-Host it for free: any WSGI host (e.g. PythonAnywhere) — point it at `application`
+Host it for free: any WSGI host (e.g. PythonAnywhere) - point it at `application`
 in this file (see wsgi.py and README.md).
 
 Data: one SQLite file (data/routine.db). A user has one or more projects (routines);
@@ -31,7 +31,7 @@ DATA_DIR = os.environ.get("ROUTINE_DATA", os.path.join(BASE, "data"))
 DB_PATH = os.path.join(DATA_DIR, "routine.db")
 STATIC = os.path.join(BASE, "static")
 TEMPLATE_CSV = os.environ.get("ROUTINE_TEMPLATE", os.path.join(BASE, "templates", "bcs-4-month.csv"))
-TEMPLATE_NAME = os.environ.get("ROUTINE_TEMPLATE_NAME", "BCS Daily — ৪ মাসের রুটিন")
+TEMPLATE_NAME = os.environ.get("ROUTINE_TEMPLATE_NAME", "BCS Daily - ৪ মাসের রুটিন")
 # Minutes east of UTC used for "today" on the server (admin summaries). Bangladesh = +6h.
 TZ_MIN = int(os.environ.get("ROUTINE_TZ_OFFSET", "360"))
 MAX_BODY = 8 * 1024 * 1024
@@ -105,9 +105,9 @@ BN_DIGITS = str.maketrans("০১২৩৪৫৬৭৮৯", "0123456789")
 
 
 def parse_template(text):
-    """Read the week-block routine CSV: a row "সপ্তাহ N (মাস M) — Subject — part", a "Day"
+    """Read the week-block routine CSV: a row "সপ্তাহ N (মাস M) - Subject - part", a "Day"
     header row naming the columns, then "Day 1..7" rows. The first column holds the week's
-    own subject (the part of the week title before " — "); the other columns are subjects
+    own subject (the part of the week title before " - "); the other columns are subjects
     named by the header. A cell may hold several topics separated by "|"; a trailing
     "[High]" / "[Medium]" / "[Low]" is the priority."""
     rows = list(csv.reader(io.StringIO(text.lstrip("﻿"))))
@@ -120,13 +120,13 @@ def parse_template(text):
             keys[n] = "s%d" % (len(keys) + 1)
         return keys[n]
 
-    # first pass: subjects in a stable order — week subjects first, then the column subjects
+    # first pass: subjects in a stable order - week subjects first, then the column subjects
     for r in rows:
         first = (r[0] if r else "").strip()
         if WEEK_ROW.match(first):
             full = ", ".join(c.strip() for c in r if c.strip())
-            title = full.split(" — ", 1)[1].strip() if " — " in full else full
-            week_names.append(title.split(" — ")[0].strip() or title)
+            title = full.split(" - ", 1)[1].strip() if " - " in full else full
+            week_names.append(title.split(" - ")[0].strip() or title)
         elif first.lower() == "day" and not col_names:
             col_names = [c.strip() for c in r[2:] if c.strip()]
     for n in week_names + col_names:
@@ -141,7 +141,7 @@ def parse_template(text):
         if WEEK_ROW.match(first):
             week += 1
             full = ", ".join(c for c in cells if c)
-            wt[str(week)] = full.split(" — ", 1)[1].strip() if " — " in full else full
+            wt[str(week)] = full.split(" - ", 1)[1].strip() if " - " in full else full
             week_subj[week] = keys[week_names[week - 1]]
             continue
         if first.lower() == "day":
@@ -222,6 +222,8 @@ def summarize(st, today=None):
     fg = st.get("FGD", {})
     away = sum(fg.get(str(x), {}).get("sec", 0) for x in week)
     studied = sum(sec.get(str(x), 0) for x in week)
+    smin = st.get("SMIN") or {}
+    est = lambda p: p.get("est") or smin.get(p["s"], 0) or 0
     return {
         "day": co, "started": (today - start).days >= 0, "start": start.isoformat(),
         "plan_len": max([co] + [ordf(p) for p in tasks]),
@@ -240,6 +242,9 @@ def summarize(st, today=None):
         "leaves_7d": sum(fg.get(str(x), {}).get("n", 0) for x in week),
         "away_min_7d": int(away // 60),
         "broken_7d": sum(fg.get(str(x), {}).get("b", 0) for x in week),
+        # planned minutes (topic estimate or its subject's default)
+        "plan_min_today": sum(est(p) for p in today_tasks) + sum(f.get("est") or 0 for f in st.get("FOC", []) if f.get("o") == co),
+        "plan_min_7d": sum(est(p) for p in tasks if co - 6 <= ordf(p) <= co),
     }
 
 
