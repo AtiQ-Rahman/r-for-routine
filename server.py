@@ -16,6 +16,8 @@ import argparse
 import copy
 import csv
 import datetime as dt
+import hashlib
+import hmac
 import io
 import json
 import mimetypes
@@ -76,6 +78,25 @@ def init_db():
             con.execute("ALTER TABLE users ADD COLUMN prefs TEXT")
         if "active_project" not in cols:
             con.execute("ALTER TABLE users ADD COLUMN active_project INTEGER")
+        # PIN login: accounts made before PINs have none and set one at their next login;
+        # they were all usable, so they start approved
+        if "pin" not in cols:
+            con.execute("ALTER TABLE users ADD COLUMN pin TEXT")
+        if "approved" not in cols:
+            con.execute("ALTER TABLE users ADD COLUMN approved INTEGER NOT NULL DEFAULT 1")
+        if "pin_fails" not in cols:
+            con.execute("ALTER TABLE users ADD COLUMN pin_fails INTEGER NOT NULL DEFAULT 0")
+        if "locked_until" not in cols:
+            con.execute("ALTER TABLE users ADD COLUMN locked_until TEXT")
+        if "pin_temp" not in cols:
+            con.execute("ALTER TABLE users ADD COLUMN pin_temp INTEGER NOT NULL DEFAULT 0")
+        if "blocked" not in cols:
+            con.execute("ALTER TABLE users ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0")
+        scols = {r["name"] for r in con.execute("PRAGMA table_info(sessions)")}
+        if "last_used" not in scols:
+            con.execute("ALTER TABLE sessions ADD COLUMN last_used TEXT")
+        if "agent" not in scols:
+            con.execute("ALTER TABLE sessions ADD COLUMN agent TEXT")
         # earlier versions kept one routine per user in `states`: turn each into a project
         if con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='states'").fetchone():
             for r in con.execute("SELECT s.* FROM states s WHERE NOT EXISTS "
@@ -216,6 +237,7 @@ def summarize(st, today=None):
     while o >= 1 and hrs(o) >= tgt(o):
         streak, o = streak + 1, o - 1
     today_tasks = [p for p in tasks if ordf(p) == co]
+    own_today = [f for f in st.get("FOC", []) if f.get("o") == co]
     upto = [p for p in tasks if ordf(p) <= co]
     sec = st.get("SEC", {})
     week = range(max(1, co - 6), co + 1)
@@ -229,8 +251,9 @@ def summarize(st, today=None):
         "plan_len": max([co] + [ordf(p) for p in tasks]),
         "overall": pct(tasks), "on_track": pct(upto),
         "done": sum(1 for p in tasks if p["id"] in done), "total": len(tasks),
-        "today_pct": pct(today_tasks), "today_done": sum(1 for p in today_tasks if p["id"] in done),
-        "today_total": len(today_tasks),
+        # today = routine topics + own to-dos of the day
+        "today_done": sum(1 for p in today_tasks if p["id"] in done) + sum(1 for f in own_today if f.get("done")),
+        "today_total": len(today_tasks) + len(own_today),
         "pending": sum(1 for p in tasks if ordf(p) < co and p["id"] not in done),
         "hours_today": hrs(co), "target": tgt(co),
         "hours_7d": sum(hrs(x) for x in range(max(1, co - 6), co + 1)),
@@ -257,7 +280,8 @@ class HTTPError(Exception):
 
 STATUS = {200: "200 OK", 201: "201 Created", 400: "400 Bad Request", 401: "401 Unauthorized",
           403: "403 Forbidden", 404: "404 Not Found", 405: "405 Method Not Allowed",
-          409: "409 Conflict", 413: "413 Payload Too Large", 500: "500 Internal Server Error"}
+          409: "409 Conflict", 413: "413 Payload Too Large", 429: "429 Too Many Requests",
+          500: "500 Internal Server Error"}
 
 
 def read_json(environ):
@@ -287,6 +311,61 @@ def norm_phone(raw):
     return d
 
 
+PIN_RE = re.compile(r"^[0-9]{4,6}$")
+PIN_TRIES, PIN_LOCK_MIN = 5, 15
+
+
+def valid_pin(raw):
+    pin = str(raw or "").translate(BN_DIGITS).strip()
+    if not PIN_RE.match(pin):
+        raise HTTPError(400, "bad_pin_format")
+    return pin
+
+
+def hash_pin(pin):
+    salt = secrets.token_hex(16)
+    return "%s$%s" % (salt, hashlib.pbkdf2_hmac("sha256", pin.encode(), salt.encode(), 200000).hex())
+
+
+def pin_ok(stored, pin):
+    salt, _, h = (stored or "").partition("$")
+    return bool(h) and hmac.compare_digest(
+        h, hashlib.pbkdf2_hmac("sha256", pin.encode(), salt.encode(), 200000).hex())
+
+
+def check_pin(con, u, pin):
+    """Count wrong PINs; after PIN_TRIES the account is locked for PIN_LOCK_MIN minutes. The count
+    lives in SQL and is re-read after the (slow) hash check, so guesses sent in parallel stop at the
+    lock too. It is committed before raising, since an error rolls the transaction back."""
+    now = now_iso()
+    if u["locked_until"] and u["locked_until"] > now:
+        raise HTTPError(429, "locked", {"until": u["locked_until"]})
+    if u["locked_until"]:  # an old lock has run out: fresh tries
+        con.execute("UPDATE users SET pin_fails=0, locked_until=NULL WHERE id=? AND locked_until<=?", (u["id"], now))
+        con.commit()
+    ok = pin_ok(u["pin"], pin)
+    con.execute("UPDATE users SET pin_fails=pin_fails+? WHERE id=?", (0 if ok else 1, u["id"]))
+    fails, lock = con.execute("SELECT pin_fails, locked_until FROM users WHERE id=?", (u["id"],)).fetchone()
+    if lock and lock > now_iso():  # locked by another request meanwhile
+        con.commit()
+        raise HTTPError(429, "locked", {"until": lock})
+    if ok:
+        con.execute("UPDATE users SET pin_fails=0 WHERE id=?", (u["id"],))
+        return
+    if fails >= PIN_TRIES:
+        lock = (dt.datetime.utcnow() + dt.timedelta(minutes=PIN_LOCK_MIN)).replace(microsecond=0).isoformat() + "Z"
+        con.execute("UPDATE users SET locked_until=? WHERE id=?", (lock, u["id"]))
+        con.commit()
+        raise HTTPError(429, "locked", {"until": lock})
+    con.commit()
+    raise HTTPError(401, "bad_pin", {"left": PIN_TRIES - fails})
+
+
+def temp_pin():
+    """A one-time PIN the admin passes on (new user or PIN reset); the user should change it."""
+    return "%06d" % secrets.randbelow(10 ** 6)
+
+
 def user_json(u):
     try:
         prefs = json.loads(u["prefs"] or "{}")
@@ -294,7 +373,8 @@ def user_json(u):
         prefs = {}
     return {"id": u["id"], "phone": u["phone"], "name": u["name"], "is_admin": bool(u["is_admin"]),
             "created": u["created"], "last_seen": u["last_seen"], "prefs": prefs,
-            "active_project": u["active_project"]}
+            "active_project": u["active_project"], "approved": bool(u["approved"]), "has_pin": bool(u["pin"]),
+            "blocked": bool(u["blocked"]), "pin_temp": bool(u["pin_temp"])}
 
 
 def valid_day(s):
@@ -304,10 +384,32 @@ def valid_day(s):
         return server_today().isoformat()
 
 
-def new_session(con, uid):
+def new_session(con, uid, environ=None):
     token = secrets.token_urlsafe(32)
-    con.execute("INSERT INTO sessions(token,user_id,created) VALUES(?,?,?)", (token, uid, now_iso()))
+    con.execute("INSERT INTO sessions(token,user_id,created,last_used,agent) VALUES(?,?,?,?,?)",
+                (token, uid, now_iso(), now_iso(), device_name((environ or {}).get("HTTP_USER_AGENT", ""))))
     return token
+
+
+def device_name(ua):
+    """A short label like "Chrome · Android" from a User-Agent string."""
+    br = next((n for k, n in (("Edg/", "Edge"), ("OPR/", "Opera"), ("SamsungBrowser", "Samsung Internet"),
+                              ("Firefox/", "Firefox"), ("Chrome/", "Chrome"), ("Safari/", "Safari")) if k in ua), "")
+    os_ = next((n for k, n in (("Android", "Android"), ("iPhone", "iPhone"), ("iPad", "iPad"), ("Windows", "Windows"),
+                               ("Mac OS", "Mac"), ("Linux", "Linux")) if k in ua), "")
+    return " · ".join(x for x in (br, os_) if x) or "Unknown device"
+
+
+def session_list(con, uid, current=None):
+    return [{"device": r["agent"] or "Unknown device", "created": r["created"],
+             "last_used": r["last_used"] or r["created"], "current": r["token"] == current}
+            for r in con.execute("SELECT * FROM sessions WHERE user_id=? ORDER BY COALESCE(last_used,created) DESC",
+                                 (uid,)).fetchall()]
+
+
+def bearer(environ):
+    h = environ.get("HTTP_AUTHORIZATION", "")
+    return h[7:].strip() if h.lower().startswith("bearer ") else ""
 
 
 def add_project(con, uid, name, state):
@@ -317,29 +419,30 @@ def add_project(con, uid, name, state):
     return cur.lastrowid
 
 
-def create_user(con, phone, name, today, lang):
+def create_user(con, phone, name, today, lang, pin=None, approved=True):
     name = (name or "").strip()[:60]
     if not name:
         raise HTTPError(400, "name_required")
     if con.execute("SELECT 1 FROM users WHERE phone=?", (phone,)).fetchone():
         raise HTTPError(409, "phone_exists")
     first = con.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
-    cur = con.execute("INSERT INTO users(phone,name,is_admin,created,last_seen,prefs) VALUES(?,?,?,?,?,?)",
-                      (phone, name, 1 if first else 0, now_iso(), None, json.dumps({"lang": lang})))
+    cur = con.execute("INSERT INTO users(phone,name,is_admin,created,last_seen,prefs,pin,approved) VALUES(?,?,?,?,?,?,?,?)",
+                      (phone, name, 1 if first else 0, now_iso(), None, json.dumps({"lang": lang}),
+                       hash_pin(pin) if pin else None, 1 if first or approved else 0))
     add_project(con, cur.lastrowid, TEMPLATE_NAME, new_state(today))
     return con.execute("SELECT * FROM users WHERE id=?", (cur.lastrowid,)).fetchone()
 
 
 def auth(con, environ, admin=False):
-    h = environ.get("HTTP_AUTHORIZATION", "")
-    token = h[7:].strip() if h.lower().startswith("bearer ") else ""
+    token = bearer(environ)
     row = con.execute("SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=?",
                       (token,)).fetchone() if token else None
-    if not row:
+    if not row or not row["approved"] or row["blocked"]:
         raise HTTPError(401, "login_required")
     if admin and not row["is_admin"]:
         raise HTTPError(403, "admin_only")
     con.execute("UPDATE users SET last_seen=? WHERE id=?", (now_iso(), row["id"]))
+    con.execute("UPDATE sessions SET last_used=? WHERE token=?", (now_iso(), token))
     return row
 
 
@@ -379,20 +482,55 @@ def api(method, path, environ):
             u = con.execute("SELECT * FROM users WHERE phone=?", (norm_phone(body.get("phone")),)).fetchone()
             if not u:
                 raise HTTPError(404, "not_found")
-            return 200, {"token": new_session(con, u["id"]), "user": user_json(u)}
+            if not u["approved"]:
+                raise HTTPError(403, "pending_approval")
+            if u["blocked"]:
+                raise HTTPError(403, "blocked")
+            if not u["pin"]:
+                # an account from before PINs: it may pick one here only while it is logged in nowhere;
+                # otherwise the PIN is set in Settings on a logged-in device (or the admin resets it)
+                if con.execute("SELECT 1 FROM sessions WHERE user_id=?", (u["id"],)).fetchone():
+                    raise HTTPError(403, "pin_from_settings")
+                if not body.get("new_pin"):
+                    raise HTTPError(409, "pin_setup")
+                con.execute("UPDATE users SET pin=?, pin_fails=0, locked_until=NULL WHERE id=?",
+                            (hash_pin(valid_pin(body["new_pin"])), u["id"]))
+            else:
+                check_pin(con, u, str(body.get("pin") or "").translate(BN_DIGITS).strip())
+            u = con.execute("SELECT * FROM users WHERE id=?", (u["id"],)).fetchone()
+            return 200, {"token": new_session(con, u["id"], environ), "user": user_json(u)}
 
         if parts == ["register"] and method == "POST":
             body = read_json(environ)
             u = create_user(con, norm_phone(body.get("phone")), body.get("name"),
-                            valid_day(body.get("today")), body.get("lang") or "en")
-            return 201, {"token": new_session(con, u["id"]), "user": user_json(u)}
+                            valid_day(body.get("today")), body.get("lang") or "en",
+                            pin=valid_pin(body.get("pin")), approved=False)
+            if not u["approved"]:
+                return 201, {"pending": True}
+            return 201, {"token": new_session(con, u["id"], environ), "user": user_json(u)}
 
         me = auth(con, environ)
         if parts == ["me"]:
-            return 200, {"user": user_json(me)}
+            out = {"user": user_json(me)}
+            if me["is_admin"]:
+                out["waiting"] = con.execute("SELECT COUNT(*) FROM users WHERE approved=0").fetchone()[0]
+            return 200, out
+        if parts == ["pin"] and method == "POST":
+            body = read_json(environ)
+            new = valid_pin(body.get("new"))
+            if me["pin"]:
+                check_pin(con, me, str(body.get("old") or "").translate(BN_DIGITS).strip())
+            con.execute("UPDATE users SET pin=?, pin_temp=0 WHERE id=?", (hash_pin(new), me["id"]))
+            # other devices log out; this one stays in
+            con.execute("DELETE FROM sessions WHERE user_id=? AND token<>?", (me["id"], bearer(environ)))
+            return 200, {"ok": True}
         if parts == ["logout"] and method == "POST":
-            h = environ.get("HTTP_AUTHORIZATION", "")
-            con.execute("DELETE FROM sessions WHERE token=?", (h[7:].strip(),))
+            con.execute("DELETE FROM sessions WHERE token=?", (bearer(environ),))
+            return 200, {"ok": True}
+        if parts == ["sessions"] and method == "GET":
+            return 200, {"sessions": session_list(con, me["id"], bearer(environ))}
+        if parts == ["sessions", "others"] and method == "DELETE":
+            con.execute("DELETE FROM sessions WHERE user_id=? AND token<>?", (me["id"], bearer(environ)))
             return 200, {"ok": True}
         if parts == ["prefs"] and method == "PUT":
             prefs = read_json(environ).get("prefs")
@@ -455,13 +593,16 @@ def api(method, path, environ):
                     j = user_json(r)
                     j.pop("prefs", None)
                     j["projects"] = project_list(con, r["id"])
+                    j["sessions"] = session_list(con, r["id"])
                     out.append(j)
                 return 200, {"users": out, "me": me["id"]}
             if parts == ["admin", "users"] and method == "POST":
                 body = read_json(environ)
+                pin = temp_pin()
                 u = create_user(con, norm_phone(body.get("phone")), body.get("name"),
-                                valid_day(body.get("today")), body.get("lang") or "en")
-                return 201, {"user": user_json(u)}
+                                valid_day(body.get("today")), body.get("lang") or "en", pin=pin)
+                con.execute("UPDATE users SET pin_temp=1 WHERE id=?", (u["id"],))
+                return 201, {"user": user_json(u), "pin": pin}
             if len(parts) == 3 and parts[1] == "projects" and method == "GET":
                 row = project_row(con, int_part(parts[2]))
                 u = con.execute("SELECT * FROM users WHERE id=?", (row["user_id"],)).fetchone()
@@ -471,8 +612,39 @@ def api(method, path, environ):
                 uid = int_part(parts[2])
                 if not con.execute("SELECT 1 FROM users WHERE id=?", (uid,)).fetchone():
                     raise HTTPError(404, "not_found")
-                if uid == me["id"] and method != "GET":
+                if uid == me["id"] and method != "GET" and parts[3:] != ["edit"]:
                     raise HTTPError(400, "not_yourself")
+                if parts[3:] in (["block"], ["reset-pin"]) and con.execute(
+                        "SELECT is_admin FROM users WHERE id=?", (uid,)).fetchone()[0]:
+                    raise HTTPError(400, "is_admin")  # remove the admin role first
+                if len(parts) == 4 and parts[3] == "block" and method == "POST":
+                    blocked = 1 if read_json(environ).get("blocked") else 0
+                    con.execute("UPDATE users SET blocked=? WHERE id=?", (blocked, uid))
+                    if blocked:
+                        con.execute("DELETE FROM sessions WHERE user_id=?", (uid,))
+                    return 200, {"ok": True}
+                if len(parts) == 4 and parts[3] == "edit" and method == "POST":
+                    body = read_json(environ)
+                    name, phone = (body.get("name") or "").strip()[:60], norm_phone(body.get("phone"))
+                    if not name:
+                        raise HTTPError(400, "name_required")
+                    if con.execute("SELECT 1 FROM users WHERE phone=? AND id<>?", (phone, uid)).fetchone():
+                        raise HTTPError(409, "phone_exists")
+                    con.execute("UPDATE users SET name=?, phone=? WHERE id=?", (name, phone, uid))
+                    return 200, {"ok": True}
+                if len(parts) == 4 and parts[3] == "sessions" and method == "DELETE":
+                    con.execute("DELETE FROM sessions WHERE user_id=?", (uid,))
+                    return 200, {"ok": True}
+                if len(parts) == 4 and parts[3] == "approve" and method == "POST":
+                    con.execute("UPDATE users SET approved=1 WHERE id=?", (uid,))
+                    return 200, {"ok": True}
+                if len(parts) == 4 and parts[3] == "reset-pin" and method == "POST":
+                    # a one-time PIN for the admin to pass on; the user is asked to change it
+                    pin = temp_pin()
+                    con.execute("UPDATE users SET pin=?, pin_temp=1, pin_fails=0, locked_until=NULL WHERE id=?",
+                                (hash_pin(pin), uid))
+                    con.execute("DELETE FROM sessions WHERE user_id=?", (uid,))
+                    return 200, {"ok": True, "pin": pin}
                 if len(parts) == 4 and parts[3] == "role" and method == "POST":
                     con.execute("UPDATE users SET is_admin=? WHERE id=?",
                                 (1 if read_json(environ).get("is_admin") else 0, uid))

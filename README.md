@@ -2,7 +2,7 @@
 
 A web app for a daily study routine: today's topics with ticks, study hours, Pomodoro timer,
 pending work, spaced revision, notes, print, CSV import/export, English/বাংলা, light/dark,
-phone-number login and an admin view of every user's progress.
+phone + PIN login with admin-approved sign-up and an admin view of every user's progress.
 
 New users start with the **BCS 4-month routine** (`templates/bcs-4-month.csv`, 16 weeks · 112 days).
 "Day N" counts from each project's start date by the calendar.
@@ -43,13 +43,23 @@ an app icon. Only do this on a network you trust (see *Login* below).
 
 ## Login and admin
 
-- Login is by phone number only - **no password or OTP yet**. Anyone who can reach the app and knows a
-  phone number can open that account. Fine on your own computer; add real authentication (OTP or a
-  password) before sharing a public link widely.
-- A new number asks for a name and creates the account.
+- Login is by **phone number + a 4-6 digit PIN**. PINs are stored salted and hashed (PBKDF2);
+  5 wrong PINs in a row lock the account for 15 minutes. A PIN can be changed in *Settings*.
+- **Sign-up needs approval:** a new user fills in name, phone and PIN, then waits until an admin
+  approves the request (*Admin* tab, "Waiting for approval"; the tab shows how many are waiting).
+  *Reject* deletes the request.
+- **Manage** (⚙ next to a user on the *Admin* tab): edit name and phone, make/remove admin, reset PIN,
+  block/unblock (a blocked user is logged out and cannot log in; their data stays), log them out of every
+  device, see their devices, delete them.
+- *Settings → Devices* lists where your account is logged in and can log out every other device.
+- **Users added by the admin, and PIN resets, get a one-time 6-digit PIN** shown once to the admin to
+  pass on; the app asks them to pick their own. Admins can't block or reset another admin (remove the
+  role first).
+- Accounts from before PINs set their PIN in *Settings* on a device where they are already logged in
+  (the app nudges them). Only an old account that is logged in nowhere can pick its PIN on the login screen.
 - **The first account created is the admin.** The admin sees an *Admin* tab: every user's day,
   overall progress, on-track %, today's ticks, hours in the last 7 days, streak, pending and last seen;
-  one row per project; *View* opens that routine read-only; the admin can add users, make/remove admins and delete users.
+  one row per project; *View* opens that routine read-only; the admin can approve or reject sign-ups, add users, reset PINs, make/remove admins and delete users.
 
 ## Host it for free (PythonAnywhere)
 
