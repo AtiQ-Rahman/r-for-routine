@@ -43,8 +43,11 @@ an app icon. Only do this on a network you trust (see *Login* below).
 
 ## Login and admin
 
-- Login is by **phone number + a 4-6 digit PIN**. PINs are stored salted and hashed (PBKDF2);
-  5 wrong PINs in a row lock the account for 15 minutes. A PIN can be changed in *Settings*.
+- Login is by **phone number + a 4-6 digit PIN**. PINs are stored salted and hashed (PBKDF2).
+  A PIN can be changed in *Settings*. Wrong-PIN limits: from one network, 5 tries per account and
+  10 in all per 15 minutes; per account from anywhere, 10 tries, then a lock of 15 minutes that
+  doubles with each lock in a row (up to a day). An unknown number gets the same "wrong phone or PIN"
+  answer, and "waiting for approval" / "blocked" is shown only after the right PIN.
 - **Sign-up needs approval:** a new user fills in name, phone and PIN, then waits until an admin
   approves the request (*Admin* tab, "Waiting for approval"; the tab shows how many are waiting).
   *Reject* deletes the request.
@@ -64,6 +67,11 @@ an app icon. Only do this on a network you trust (see *Login* below).
 ## Host it for free (PythonAnywhere)
 
 PythonAnywhere's free plan runs Python web apps and keeps files (so the SQLite data stays).
+
+The login limits count tries per network address. Behind PythonAnywhere's proxy every request seems to come
+from the proxy, so set `ROUTINE_TRUST_PROXY=1` (add `os.environ["ROUTINE_TRUST_PROXY"] = "1"` above the
+`from server import application` line in the WSGI file) to read the real address from `X-Real-IP`.
+Don't set it when the app is reached directly, or anyone could fake their address.
 
 1. Create a free account at <https://www.pythonanywhere.com>.
 2. *Files* → upload this folder as a zip into your home folder and unzip it in a *Bash console*

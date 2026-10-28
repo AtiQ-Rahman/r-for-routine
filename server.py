@@ -25,6 +25,8 @@ import os
 import re
 import secrets
 import sqlite3
+import threading
+import time
 from socketserver import ThreadingMixIn
 from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 
@@ -88,6 +90,8 @@ def init_db():
             con.execute("ALTER TABLE users ADD COLUMN pin_fails INTEGER NOT NULL DEFAULT 0")
         if "locked_until" not in cols:
             con.execute("ALTER TABLE users ADD COLUMN locked_until TEXT")
+        if "lock_count" not in cols:
+            con.execute("ALTER TABLE users ADD COLUMN lock_count INTEGER NOT NULL DEFAULT 0")
         if "pin_temp" not in cols:
             con.execute("ALTER TABLE users ADD COLUMN pin_temp INTEGER NOT NULL DEFAULT 0")
         if "blocked" not in cols:
@@ -237,7 +241,8 @@ def summarize(st, today=None):
     while o >= 1 and hrs(o) >= tgt(o):
         streak, o = streak + 1, o - 1
     today_tasks = [p for p in tasks if ordf(p) == co]
-    own_today = [f for f in st.get("FOC", []) if f.get("o") == co]
+    # unfinished own to-dos of earlier days move to today when the app opens (syncCur): count them now
+    own_today = [f for f in st.get("FOC", []) if f.get("o") == co or (f.get("o") or 0) < co and not f.get("done")]
     upto = [p for p in tasks if ordf(p) <= co]
     sec = st.get("SEC", {})
     week = range(max(1, co - 6), co + 1)
@@ -266,7 +271,7 @@ def summarize(st, today=None):
         "away_min_7d": int(away // 60),
         "broken_7d": sum(fg.get(str(x), {}).get("b", 0) for x in week),
         # planned minutes (topic estimate or its subject's default)
-        "plan_min_today": sum(est(p) for p in today_tasks) + sum(f.get("est") or 0 for f in st.get("FOC", []) if f.get("o") == co),
+        "plan_min_today": sum(est(p) for p in today_tasks) + sum(f.get("est") or 0 for f in own_today),
         "plan_min_7d": sum(est(p) for p in tasks if co - 6 <= ordf(p) <= co),
     }
 
@@ -312,7 +317,59 @@ def norm_phone(raw):
 
 
 PIN_RE = re.compile(r"^[0-9]{4,6}$")
-PIN_TRIES, PIN_LOCK_MIN = 5, 15
+# Wrong-PIN limits. From one IP: 5 tries per account and 10 in all per WINDOW. Per account from
+# any IP: 10 tries, then a lock of 15 minutes that doubles with each lock in a row (up to a day).
+# One stranger can't lock you out, and guessing a PIN takes years.
+WINDOW = 15 * 60
+IP_ACCOUNT_TRIES, IP_TRIES, PIN_TRIES, PIN_LOCK_MIN, PIN_LOCK_MAX = 5, 10, 10, 15, 24 * 60
+TRUST_PROXY = os.environ.get("ROUTINE_TRUST_PROXY") == "1"
+
+
+def client_ip(environ):
+    # behind a proxy (e.g. PythonAnywhere: set ROUTINE_TRUST_PROXY=1) the real address is in a header
+    if TRUST_PROXY:
+        ip = environ.get("HTTP_X_REAL_IP") or environ.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip()
+        if ip:
+            return ip
+    return environ.get("REMOTE_ADDR", "")
+
+
+class Limiter:
+    """Failures per key within WINDOW seconds, kept in memory (a restart clears them). take() counts
+    an attempt before the slow PIN check, so parallel guesses are counted; give_back() undoes it."""
+
+    def __init__(self):
+        self.hits, self.lock = {}, threading.Lock()
+
+    def take(self, limits):
+        now = time.time()
+        with self.lock:
+            if len(self.hits) > 20000:
+                self.hits = {k: v for k, v in self.hits.items() if v and v[-1] > now - WINDOW}
+            for key, limit in limits:
+                hits = self.hits[key] = [t for t in self.hits.get(key, []) if t > now - WINDOW]
+                if len(hits) >= limit:
+                    return key, hits[0] + WINDOW
+            for key, _ in limits:
+                self.hits[key].append(now)
+        return None
+
+    def left(self, key, limit):
+        with self.lock:
+            return limit - len(self.hits.get(key, []))
+
+    def give_back(self, limits):
+        with self.lock:
+            for key, _ in limits:
+                if self.hits.get(key):
+                    self.hits[key].pop()
+
+
+LIMIT = Limiter()
+
+
+def iso_at(ts):
+    return dt.datetime.utcfromtimestamp(ts).replace(microsecond=0).isoformat() + "Z"
 
 
 def valid_pin(raw):
@@ -334,9 +391,8 @@ def pin_ok(stored, pin):
 
 
 def check_pin(con, u, pin):
-    """Count wrong PINs; after PIN_TRIES the account is locked for PIN_LOCK_MIN minutes. The count
-    lives in SQL and is re-read after the (slow) hash check, so guesses sent in parallel stop at the
-    lock too. It is committed before raising, since an error rolls the transaction back."""
+    """The account-wide count (all IPs) lives in SQL and is re-read after the slow hash check, so
+    parallel guesses stop at the lock too. It is committed before raising (an error rolls back)."""
     now = now_iso()
     if u["locked_until"] and u["locked_until"] > now:
         raise HTTPError(429, "locked", {"until": u["locked_until"]})
@@ -345,20 +401,22 @@ def check_pin(con, u, pin):
         con.commit()
     ok = pin_ok(u["pin"], pin)
     con.execute("UPDATE users SET pin_fails=pin_fails+? WHERE id=?", (0 if ok else 1, u["id"]))
-    fails, lock = con.execute("SELECT pin_fails, locked_until FROM users WHERE id=?", (u["id"],)).fetchone()
+    fails, lock, locks = con.execute("SELECT pin_fails, locked_until, lock_count FROM users WHERE id=?",
+                                     (u["id"],)).fetchone()
     if lock and lock > now_iso():  # locked by another request meanwhile
         con.commit()
         raise HTTPError(429, "locked", {"until": lock})
     if ok:
-        con.execute("UPDATE users SET pin_fails=0 WHERE id=?", (u["id"],))
-        return
+        con.execute("UPDATE users SET pin_fails=0, lock_count=0 WHERE id=?", (u["id"],))
+        return None
     if fails >= PIN_TRIES:
-        lock = (dt.datetime.utcnow() + dt.timedelta(minutes=PIN_LOCK_MIN)).replace(microsecond=0).isoformat() + "Z"
-        con.execute("UPDATE users SET locked_until=? WHERE id=?", (lock, u["id"]))
+        mins = min(PIN_LOCK_MAX, PIN_LOCK_MIN * 2 ** min(locks, 10))
+        lock = (dt.datetime.utcnow() + dt.timedelta(minutes=mins)).replace(microsecond=0).isoformat() + "Z"
+        con.execute("UPDATE users SET locked_until=?, lock_count=lock_count+1 WHERE id=?", (lock, u["id"]))
         con.commit()
         raise HTTPError(429, "locked", {"until": lock})
     con.commit()
-    raise HTTPError(401, "bad_pin", {"left": PIN_TRIES - fails})
+    return PIN_TRIES - fails
 
 
 def temp_pin():
@@ -400,11 +458,17 @@ def device_name(ua):
     return " · ".join(x for x in (br, os_) if x) or "Unknown device"
 
 
+def session_json(r, current=None):
+    return {"device": r["agent"] or "Unknown device", "created": r["created"],
+            "last_used": r["last_used"] or r["created"], "current": r["token"] == current}
+
+
+SESSION_ORDER = " ORDER BY COALESCE(last_used,created) DESC"
+
+
 def session_list(con, uid, current=None):
-    return [{"device": r["agent"] or "Unknown device", "created": r["created"],
-             "last_used": r["last_used"] or r["created"], "current": r["token"] == current}
-            for r in con.execute("SELECT * FROM sessions WHERE user_id=? ORDER BY COALESCE(last_used,created) DESC",
-                                 (uid,)).fetchall()]
+    return [session_json(r, current) for r in
+            con.execute("SELECT * FROM sessions WHERE user_id=?" + SESSION_ORDER, (uid,)).fetchall()]
 
 
 def bearer(environ):
@@ -435,14 +499,18 @@ def create_user(con, phone, name, today, lang, pin=None, approved=True):
 
 def auth(con, environ, admin=False):
     token = bearer(environ)
-    row = con.execute("SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=?",
+    row = con.execute("SELECT u.*, s.last_used AS s_used FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=?",
                       (token,)).fetchone() if token else None
     if not row or not row["approved"] or row["blocked"]:
         raise HTTPError(401, "login_required")
     if admin and not row["is_admin"]:
         raise HTTPError(403, "admin_only")
-    con.execute("UPDATE users SET last_seen=? WHERE id=?", (now_iso(), row["id"]))
-    con.execute("UPDATE sessions SET last_used=? WHERE token=?", (now_iso(), token))
+    # "last seen" only needs minutes, so skip the two writes on most requests (autosave is frequent)
+    now = now_iso()
+    stale = (dt.datetime.utcnow() - dt.timedelta(minutes=5)).replace(microsecond=0).isoformat() + "Z"
+    if (row["s_used"] or "") < stale or (row["last_seen"] or "") < stale:
+        con.execute("UPDATE users SET last_seen=? WHERE id=?", (now, row["id"]))
+        con.execute("UPDATE sessions SET last_used=? WHERE token=?", (now, token))
     return row
 
 
@@ -454,12 +522,14 @@ def project_row(con, pid, uid=None):
     return row
 
 
+def project_json(r):
+    return {"id": r["id"], "name": r["name"], "created": r["created"], "updated": r["updated"],
+            "summary": summarize(json.loads(r["data"]))}
+
+
 def project_list(con, uid):
-    out = []
-    for r in con.execute("SELECT * FROM projects WHERE user_id=? ORDER BY id", (uid,)).fetchall():
-        out.append({"id": r["id"], "name": r["name"], "created": r["created"], "updated": r["updated"],
-                    "summary": summarize(json.loads(r["data"]))})
-    return out
+    return [project_json(r) for r in
+            con.execute("SELECT * FROM projects WHERE user_id=? ORDER BY id", (uid,)).fetchall()]
 
 
 def int_part(s):
@@ -479,32 +549,54 @@ def api(method, path, environ):
 
         if parts == ["login"] and method == "POST":
             body = read_json(environ)
-            u = con.execute("SELECT * FROM users WHERE phone=?", (norm_phone(body.get("phone")),)).fetchone()
-            if not u:
-                raise HTTPError(404, "not_found")
-            if not u["approved"]:
-                raise HTTPError(403, "pending_approval")
-            if u["blocked"]:
-                raise HTTPError(403, "blocked")
+            phone, ip = norm_phone(body.get("phone")), client_ip(environ)
+            limits = [(("ip", ip), IP_TRIES), (("acct", phone, ip), IP_ACCOUNT_TRIES)]
+            hit = LIMIT.take(limits)
+            if hit:
+                raise HTTPError(429, "locked" if hit[0][0] == "acct" else "too_many", {"until": iso_at(hit[1])})
+            u = con.execute("SELECT * FROM users WHERE phone=?", (phone,)).fetchone()
+            if not u or not u["pin"] and con.execute("SELECT 1 FROM sessions WHERE user_id=?", (u["id"],)).fetchone():
+                # unknown number, or an account from before PINs that is logged in somewhere (it sets its
+                # PIN in Settings there): the same answer as a wrong PIN after the same work, so
+                # numbers can't be told apart
+                pin_ok("x$" + "0" * 64, "0000")
+                raise HTTPError(401, "bad_pin", {"left": LIMIT.left(limits[1][0], IP_ACCOUNT_TRIES)})
             if not u["pin"]:
-                # an account from before PINs: it may pick one here only while it is logged in nowhere;
-                # otherwise the PIN is set in Settings on a logged-in device (or the admin resets it)
-                if con.execute("SELECT 1 FROM sessions WHERE user_id=?", (u["id"],)).fetchone():
-                    raise HTTPError(403, "pin_from_settings")
+                # an account from before PINs that is logged in nowhere picks its PIN here
                 if not body.get("new_pin"):
+                    LIMIT.give_back(limits)
                     raise HTTPError(409, "pin_setup")
                 con.execute("UPDATE users SET pin=?, pin_fails=0, locked_until=NULL WHERE id=?",
                             (hash_pin(valid_pin(body["new_pin"])), u["id"]))
             else:
-                check_pin(con, u, str(body.get("pin") or "").translate(BN_DIGITS).strip())
+                left = check_pin(con, u, str(body.get("pin") or "").translate(BN_DIGITS).strip())
+                if left is not None:
+                    raise HTTPError(401, "bad_pin", {"left": min(left, LIMIT.left(limits[1][0], IP_ACCOUNT_TRIES))})
+            LIMIT.give_back(limits)
+            # account state is told only to someone who knows the PIN
+            if not u["approved"]:
+                raise HTTPError(403, "pending_approval")
+            if u["blocked"]:
+                raise HTTPError(403, "blocked")
             u = con.execute("SELECT * FROM users WHERE id=?", (u["id"],)).fetchone()
             return 200, {"token": new_session(con, u["id"], environ), "user": user_json(u)}
 
         if parts == ["register"] and method == "POST":
             body = read_json(environ)
-            u = create_user(con, norm_phone(body.get("phone")), body.get("name"),
-                            valid_day(body.get("today")), body.get("lang") or "en",
-                            pin=valid_pin(body.get("pin")), approved=False)
+            # "this number already has an account" also counts against the IP, so numbers can't be scanned
+            limits = [(("ip", client_ip(environ)), IP_TRIES)]
+            hit = LIMIT.take(limits)
+            if hit:
+                raise HTTPError(429, "too_many", {"until": iso_at(hit[1])})
+            try:
+                u = create_user(con, norm_phone(body.get("phone")), body.get("name"),
+                                valid_day(body.get("today")), body.get("lang") or "en",
+                                pin=valid_pin(body.get("pin")), approved=False)
+            except HTTPError as e:
+                if e.error != "phone_exists":
+                    LIMIT.give_back(limits)
+                raise
+            LIMIT.give_back(limits)
             if not u["approved"]:
                 return 201, {"pending": True}
             return 201, {"token": new_session(con, u["id"], environ), "user": user_json(u)}
@@ -519,7 +611,9 @@ def api(method, path, environ):
             body = read_json(environ)
             new = valid_pin(body.get("new"))
             if me["pin"]:
-                check_pin(con, me, str(body.get("old") or "").translate(BN_DIGITS).strip())
+                left = check_pin(con, me, str(body.get("old") or "").translate(BN_DIGITS).strip())
+                if left is not None:
+                    raise HTTPError(401, "bad_pin", {"left": left})
             con.execute("UPDATE users SET pin=?, pin_temp=0 WHERE id=?", (hash_pin(new), me["id"]))
             # other devices log out; this one stays in
             con.execute("DELETE FROM sessions WHERE user_id=? AND token<>?", (me["id"], bearer(environ)))
@@ -588,12 +682,17 @@ def api(method, path, environ):
         if parts[:1] == ["admin"]:
             auth(con, environ, admin=True)
             if parts == ["admin", "users"] and method == "GET":
-                out = []
+                out, projs, sess = [], {}, {}
+                # two queries for everyone instead of two per user
+                for p in con.execute("SELECT * FROM projects ORDER BY id").fetchall():
+                    projs.setdefault(p["user_id"], []).append(project_json(p))
+                for x in con.execute("SELECT * FROM sessions" + SESSION_ORDER).fetchall():
+                    sess.setdefault(x["user_id"], []).append(session_json(x))
                 for r in con.execute("SELECT * FROM users ORDER BY created").fetchall():
                     j = user_json(r)
                     j.pop("prefs", None)
-                    j["projects"] = project_list(con, r["id"])
-                    j["sessions"] = session_list(con, r["id"])
+                    j["projects"] = projs.get(r["id"], [])
+                    j["sessions"] = sess.get(r["id"], [])
                     out.append(j)
                 return 200, {"users": out, "me": me["id"]}
             if parts == ["admin", "users"] and method == "POST":

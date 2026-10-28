@@ -44,7 +44,7 @@ try{if(LG.mode=='register'){const r=await api('POST','register',{phone:LG.phone,
 else await afterAuth(await api('POST','login',LG.mode=='setpin'?{phone:LG.phone,new_pin:pin}:{phone:LG.phone,pin}))}
 catch(e){if(e.message=='pin_setup'){LG.mode='setpin';focusSel='#lpin'}
 else if(e.message=='bad_pin')LG.err=T('err.bad_pin',{n:e.data.left});
-else if(e.message=='locked')LG.err=T('err.locked',{t:new Date(e.data.until).toLocaleTimeString(LANG()=='bn'?'bn-BD':'en-GB',{hour:'2-digit',minute:'2-digit'})});
+else if(e.message=='locked'||e.message=='too_many')LG.err=T('err.'+e.message,{t:new Date(e.data.until).toLocaleTimeString(LANG()=='bn'?'bn-BD':'en-GB',{hour:'2-digit',minute:'2-digit'})});
 else LG.err=errT(e);render()}}
 
 // ---------- admin ----------

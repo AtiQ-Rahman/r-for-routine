@@ -83,9 +83,8 @@ PNAME=o.PNAME||'';P=o.P||[];uid=o.uid||P.reduce((a,p)=>Math.max(a,p.id),0);done=
 revs=o.revs||[];rid=o.rid||0;LAD=o.LAD||[1,3,7,14,30];refl=o.refl||[];R=o.R||[];RM=o.RM||[];FOC=o.FOC||[];fid=o.fid||0;pin=new Set(o.pin||[]);nof=new Set(o.nof||[]);SEC=o.SEC||{};HRC=o.HRC||{};closed=o.closed||{};FGD=o.FGD||{};
 SUBJ.splice(0,SUBJ.length,...(o.SUBJ||[]));for(const k in SNAME)delete SNAME[k];Object.assign(SNAME,o.SNAME||{});for(const k in WT)delete WT[k];Object.assign(WT,o.WT||{});
 ALL.length=0;ensureWeeks(Math.max(1,o.nw||1));const mm=migrateMain();
-// once: earlier versions added empty weeks for revisions/today past the routine end; drop trailing weeks without topics
-let trimmed=false;if((o.v||1)<3){const last=P.reduce((a,p)=>Math.max(a,p.w),1);if(ALL.length/7>last){ALL.length=last*7;trimmed=true}}
-if(trimmed&&o.SMIN){SMIN=o.SMIN;return true}if(!o.SMIN){SMIN=defaultSMIN();return true}SMIN=o.SMIN;return mm}
+// weeks are never dropped on load: an empty week may be one the user added on purpose (✕ on its card removes it)
+if(!o.SMIN){SMIN=defaultSMIN();return true}SMIN=o.SMIN;return mm}
 const mergeSet=st=>{st=st||{};return{...SET0,...st,pomo:{...SET0.pomo,...st.pomo},snd:{...SET0.snd,...st.snd},fg:{...SET0.fg,...st.fg}}};
 // older routines had one "main" subject whose name changed by week: give those topics real subjects
 function migrateMain(){if(!SUBJ.some(s=>s[0]=='main')&&!P.some(p=>p.s=='main'))return false;const before=new Set(SUBJ.map(s=>s[0]));
