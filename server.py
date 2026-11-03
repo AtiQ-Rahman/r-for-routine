@@ -30,12 +30,19 @@ import time
 from socketserver import ThreadingMixIn
 from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 
+import compress
+
 BASE = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("ROUTINE_DATA", os.path.join(BASE, "data"))
 DB_PATH = os.path.join(DATA_DIR, "routine.db")
 STATIC = os.path.join(BASE, "static")
 TEMPLATE_CSV = os.environ.get("ROUTINE_TEMPLATE", os.path.join(BASE, "templates", "bcs-4-month.csv"))
 TEMPLATE_NAME = os.environ.get("ROUTINE_TEMPLATE_NAME", "BCS Daily - ৪ মাসের রুটিন")
+# routines a new project can start from: source name -> CSV file ("template" is the one new users get)
+TEMPLATES = {
+    "template": TEMPLATE_CSV,
+    "template2": os.path.join(BASE, "templates", "bcs-2-month.csv"),
+}
 # Minutes east of UTC used for "today" on the server (admin summaries). Bangladesh = +6h.
 TZ_MIN = int(os.environ.get("ROUTINE_TZ_OFFSET", "360"))
 MAX_BODY = 8 * 1024 * 1024
@@ -151,7 +158,8 @@ def parse_template(text):
         if WEEK_ROW.match(first):
             full = ", ".join(c.strip() for c in r if c.strip())
             title = full.split(" - ", 1)[1].strip() if " - " in full else full
-            week_names.append(title.split(" - ")[0].strip() or title)
+            # the week's own subject: the title up to " - " (or " + " in a week that joins two)
+            week_names.append(re.split(r" - | \+ ", title)[0].strip() or title)
         elif first.lower() == "day" and not col_names:
             col_names = [c.strip() for c in r[2:] if c.strip()]
     for n in week_names + col_names:
@@ -196,22 +204,22 @@ def parse_template(text):
             "SNAME": {k: n for n, k in keys.items()}, "P": tasks, "nw": max(1, week)}
 
 
-_TEMPLATE = None
+_TEMPLATE = {}
+EMPTY = {"name": "", "WT": {}, "SUBJ": [], "SNAME": {}, "P": [], "nw": 1}
 
 
-def template():
-    global _TEMPLATE
-    if _TEMPLATE is None:
+def template(kind="template"):
+    if kind not in _TEMPLATE:
         try:
-            with open(TEMPLATE_CSV, encoding="utf-8-sig") as f:
-                _TEMPLATE = parse_template(f.read())
+            with open(TEMPLATES.get(kind, TEMPLATE_CSV), encoding="utf-8-sig") as f:
+                _TEMPLATE[kind] = parse_template(f.read())
         except OSError:
-            _TEMPLATE = {"name": "", "WT": {}, "SUBJ": [], "SNAME": {}, "P": [], "nw": 1}
-    return _TEMPLATE
+            _TEMPLATE[kind] = EMPTY
+    return _TEMPLATE[kind]
 
 
-def new_state(start, empty=False):
-    t = {"name": "", "WT": {}, "SUBJ": [], "SNAME": {}, "P": [], "nw": 1} if empty else copy.deepcopy(template())
+def new_state(start, empty=False, kind="template"):
+    t = copy.deepcopy(EMPTY if empty else template(kind))
     return {
         "v": 2, "PNAME": t["name"], "P": t["P"], "uid": len(t["P"]), "done": [], "START": start,
         "notes": {}, "TG": 10, "TGD": {}, "HR": {}, "revs": [], "rid": 0, "LAD": [1, 3, 7, 14, 30],
@@ -539,6 +547,31 @@ def int_part(s):
         raise HTTPError(404, "not_found")
 
 
+def compress_body(st, body, start):
+    try:
+        days = int(body.get("days"))
+    except (TypeError, ValueError):
+        raise HTTPError(400, "days_required")
+    live = [p for p in st.get("P", []) if not p.get("arch")]
+    old = max([(p["w"] - 1) * 7 + p["d"] for p in live] or [1])
+    if not 1 <= days < old:
+        raise HTTPError(400, "days_range", {"max": old - 1})
+    return compress.compress_state(st, days, start, dedupe=body.get("dedupe", True) is not False,
+                                   thin=body.get("thin", True) is not False)
+
+
+def compress_preview(st):
+    """Per new week: its title and how many topics fall on each of its days."""
+    out = []
+    for w in range(1, st["nw"] + 1):
+        days = [0] * 7
+        for p in st["P"]:
+            if not p.get("arch") and p["w"] == w:
+                days[p["d"] - 1] += 1
+        out.append({"w": w, "title": st["WT"].get(str(w), ""), "days": days})
+    return out
+
+
 # ---------------------------------------------------------------- API
 def api(method, path, environ):
     parts = [p for p in path.split("/") if p]
@@ -644,7 +677,12 @@ def api(method, path, environ):
             name = (body.get("name") or "").strip()[:80]
             if not name:
                 raise HTTPError(400, "name_required")
-            st = new_state(valid_day(body.get("start")), empty=body.get("source") != "template")
+            src = body.get("source")
+            if src == "compress":   # a shorter copy of one of my projects ("Make shorter")
+                st = json.loads(project_row(con, int_part(body.get("from")), me["id"])["data"])
+                st, _ = compress_body(st, body, valid_day(body.get("start")))
+            else:
+                st = new_state(valid_day(body.get("start")), empty=src not in TEMPLATES, kind=src)
             pid = add_project(con, me["id"], name, st)
             return 201, {"id": pid, "name": name, "rev": 1, "state": st}
         if parts[:1] == ["projects"] and len(parts) >= 2:
@@ -662,6 +700,10 @@ def api(method, path, environ):
                 con.execute("UPDATE projects SET rev=?,data=?,updated=? WHERE id=?",
                             (row["rev"] + 1, json.dumps(body["state"], ensure_ascii=False), now_iso(), pid))
                 return 200, {"rev": row["rev"] + 1}
+            if len(parts) == 3 and parts[2] == "compress" and method == "POST":
+                # preview of "Make shorter": nothing is saved
+                st, stats = compress_body(json.loads(row["data"]), read_json(environ), None)
+                return 200, {"stats": stats, "weeks": compress_preview(st)}
             if len(parts) == 3 and parts[2] == "rename" and method == "POST":
                 name = (read_json(environ).get("name") or "").strip()[:80]
                 if not name:

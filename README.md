@@ -5,6 +5,7 @@ pending work, spaced revision, notes, print, CSV import/export, English/বা�
 phone + PIN login with admin-approved sign-up and an admin view of every user's progress.
 
 New users start with the **BCS 4-month routine** (`templates/bcs-4-month.csv`, 16 weeks · 112 days).
+A new project can also start from the **BCS 2-month routine** (`templates/bcs-2-month.csv`, 8 weeks · 56 days).
 "Day N" counts from each project's start date by the calendar.
 
 **Projects:** a user can keep several routines. Tap the logo to switch, rename, delete or create one
@@ -17,6 +18,24 @@ names are listed so you can create them or map them onto an existing subject; th
 Both the week-block format (like the BCS file) and the flat `day,subject,priority,subpart` format work.
 The same table opens for a week (tap its card on the *Routine* page) and for *+ Add topics*.
 A week card's ✕ removes the week: its topics go to Archive and later weeks move up (Undo works).
+
+**Make shorter** (*Routine* page) squeezes the open routine into fewer days (2 months, 3 months or any
+number) as a **new project**; the old one stays as it is. *Preview* shows each new week and how many topics
+fall on each day before anything is made. Each subject is squeezed on its own (`compress.py`):
+
+- a topic that comes back with the same text in the same subject is kept once (the 4-month plan repeats
+  every math topic twice);
+- revision / self test / model test topics: per subject, the last one of each new week stays; a block
+  that is all revision (the final model-test week) stays whole;
+- the rest keeps its order and is spread evenly over the days that part of the plan now covers.
+
+Both rules can be switched off. Dropped topics go to the new project's Archive, ticks stay with their
+topics. The new routine can then be edited by hand like any other, or exported as CSV.
+`templates/bcs-2-month.csv` is made with the same rules:
+
+```bash
+python3 tools/make_short_routine.py templates/bcs-4-month.csv 56 templates/bcs-2-month.csv
+```
 
 Only Python 3.8+ is needed - no packages to install.
 
@@ -111,7 +130,9 @@ download a JSON backup from *Settings → Data*.
 ```
 server.py            web server + API + SQLite (stdlib only)
 wsgi.py              entry point for WSGI hosts
-templates/           routine CSV new users start with
+compress.py          "Make shorter": squeeze a routine into fewer days
+templates/           routine CSVs (4-month = new users' default, 2-month made from it)
+tools/               make_short_routine.py: write a shorter routine CSV from a longer one
 static/              the app (index.html, app.css, i18n.js, core.js, views.js, features.js, main.js, icons)
 launcher/            desktop launcher, stop script, desktop-icon installer
 ```
@@ -119,6 +140,8 @@ launcher/            desktop launcher, stop script, desktop-icon installer
 ### Routine CSV format
 
 The template is the week-block layout: a row `সপ্তাহ N (মাস M) - Title`, a `Day,…` header row naming
-the subjects, then `Day 1`…`Day 7` rows. In a cell, `|` separates topics and a trailing `[High]`,
+the subjects, then `Day 1`…`Day 7` rows. A week title may join two subjects with ` + `
+(`সাধারণ বিজ্ঞান + তথ্য ও যোগাযোগ প্রযুক্তি (ICT)`): the first is the week's own subject (first column),
+the other gets its own column named in that week's `Day,…` row. In a cell, `|` separates topics and a trailing `[High]`,
 `[Medium]` or `[Low]` sets the priority. Inside the app, *Routine → Upload CSV* takes the simple flat
 format instead (`day,subject,priority,subpart`; *Template* downloads an example).

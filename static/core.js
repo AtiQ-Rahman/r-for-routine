@@ -7,7 +7,7 @@ const pad=n=>String(n).padStart(2,'0'),clone=o=>JSON.parse(JSON.stringify(o));
 // ---------- the user's routine (one JSON document, saved on the server) ----------
 const SUBJ=[],SNAME={},WT={},ALL=[];
 let SMIN={},FGD={},P=[],uid=0,done=new Set(),START='',notes={},TG=10,TGD={},HR={},revs=[],rid=0,LAD=[1,3,7,14,30],refl=[],R=[],RM=[],FOC=[],fid=0,pin=new Set(),nof=new Set(),SEC={},HRC={},PNAME='',closed={};
-const SET0={lang:'en',notif:false,theme:'system',pomo:{focus:25,short:5,long:15,every:4,auto:false,autoHour:true},snd:{on:true,hour:true,vol:.6},fg:{on:true,grace:10,mode:'pause',alert:'alarm',blur:true,strict:false,strictMin:2}};
+const SET0={lang:'en',notif:false,theme:'system',pomo:{focus:25,short:5,long:15,every:4,auto:false,autoHour:true,font:'roboto',ms:'0',color:'teal'},snd:{on:true,hour:true,vol:.6},fg:{on:true,grace:10,mode:'pause',alert:'alarm',blur:true,strict:false,strictMin:2,search:3,searchOn:true},tick:{on:false,style:'classic',vol:.4,when:'both'},bg:{on:false,kind:'rain',vol:.3,when:'both'}};
 let SET=clone(SET0);
 
 // ---------- screen state ----------
@@ -35,6 +35,8 @@ const todayISO=()=>TODAY_Q||isoOf(new Date());
 const dayDiff=(a,b)=>Math.round((Date.parse(b+'T00:00:00Z')-Date.parse(a+'T00:00:00Z'))/864e5);
 const started=()=>dayDiff(START,todayISO())>=0;
 const co=()=>Math.max(1,dayDiff(START,todayISO())+1);
+// last day that has a topic (the routine's own length, without today)
+const routineLen=()=>Math.max(1,...P.filter(p=>!p.arch).map(p=>ord(p.w,p.d)));
 const planLen=()=>Math.max(co(),...P.filter(p=>!p.arch).map(p=>ord(p.w,p.d)));
 // pending revisions (they may fall after the routine ends; no week is created for them)
 const openRevs=()=>revs.filter(r=>!r.done&&P.some(p=>p.id==r.pid&&!p.arch));
@@ -85,7 +87,7 @@ SUBJ.splice(0,SUBJ.length,...(o.SUBJ||[]));for(const k in SNAME)delete SNAME[k];
 ALL.length=0;ensureWeeks(Math.max(1,o.nw||1));const mm=migrateMain();
 // weeks are never dropped on load: an empty week may be one the user added on purpose (✕ on its card removes it)
 if(!o.SMIN){SMIN=defaultSMIN();return true}SMIN=o.SMIN;return mm}
-const mergeSet=st=>{st=st||{};return{...SET0,...st,pomo:{...SET0.pomo,...st.pomo},snd:{...SET0.snd,...st.snd},fg:{...SET0.fg,...st.fg}}};
+const mergeSet=st=>{st=st||{};return{...SET0,...st,pomo:{...SET0.pomo,...st.pomo},snd:{...SET0.snd,...st.snd},fg:{...SET0.fg,...st.fg},tick:{...SET0.tick,...st.tick},bg:{...SET0.bg,...st.bg,...(st.bg&&st.bg.kind=='white'?{kind:'rain'}:{})}}};
 // older routines had one "main" subject whose name changed by week: give those topics real subjects
 function migrateMain(){if(!SUBJ.some(s=>s[0]=='main')&&!P.some(p=>p.s=='main'))return false;const before=new Set(SUBJ.map(s=>s[0]));
 P.forEach(p=>{if(p.s=='main'){const n=String(WT[p.w]||T('subj.main')).split(' - ')[0].trim();p.s=getSubj(n)}});
@@ -106,6 +108,7 @@ catch(e){if(e.status==409&&e.data&&e.data.state){REV=e.data.rev;restore(e.data.s
 else if(e.status==401){logoutLocal()}else{setSync('off');clearTimeout(saveTimer);saveTimer=setTimeout(flush,5000)}}}
 
 // user settings (language, theme, timer, sound) are saved to the account, shared by all projects
+async function savePrefsNow(){clearTimeout(prefTimer);const v=JSON.stringify(SET);await api('PUT','prefs',`{"prefs":${v}}`);lastPrefs=v;await flush()}
 function queuePrefs(){if(!ME||VIEW)return;const s=JSON.stringify(SET);if(s==lastPrefs)return;clearTimeout(prefTimer);prefTimer=setTimeout(async()=>{const v=JSON.stringify(SET);try{await api('PUT','prefs',`{"prefs":${v}}`);lastPrefs=v}catch(e){}},800)}
 
 // ---------- small UI helpers ----------

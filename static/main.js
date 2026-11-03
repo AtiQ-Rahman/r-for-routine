@@ -11,7 +11,7 @@ const n=pendCount(),badge=k=>k=='pending'&&n?`<span class="n">${n}</span>`:k=='a
 $('#bnav').innerHTML=bnavHtml(badge);
 $('#chip').textContent=dd(cur.w,cur.d).full;const me=$('#me');me.textContent=(VIEW?VIEW.name:ME.name).trim().charAt(0).toUpperCase()||'?';me.setAttribute('aria-label',T('nav.settings'));
 $('#view').innerHTML=(VIEW?`<div class="rob"><span>👁 ${T('ro.viewing',{n:esc(VIEW.name)})}</span><button class="mini p" data-act="exitview">← ${T('ro.back')}</button></div>`:'')+V[tab]();
-const sc=$('.mbody')?.scrollTop;$('#modal').innerHTML=closing?modalHtml():imp?impHtml():CE?ceHtml():printOpen?printHtml():projUI?(projUI.kind=='new'?projNewHtml():projMenuHtml()):'';if((imp||CE)&&sc)$('.mbody').scrollTop=sc;
+const sc=$('.mbody')?.scrollTop;$('#modal').innerHTML=closing?modalHtml():imp?impHtml():CE?ceHtml():printOpen?printHtml():projUI?(projUI.kind=='new'?projNewHtml():projUI.kind=='short'?projShortHtml():projMenuHtml()):'';if((imp||CE)&&sc)$('.mbody').scrollTop=sc;
 if(focusSel){$(focusSel)?.focus();focusSel=''}renderPomo();queueSave();queuePrefs()}
 // phone: a bottom bar with the 4 main tabs; the rest sit in a "More" sheet
 const BMAIN=['today','week','pending','dash'],BICON={today:'<path d="M4 6h16v14H4zM4 10h16M9 3v4M15 3v4"/>',week:'<path d="M4 5h16v15H4zM4 9h16M8 13h2M12 13h2M16 13h0M8 16h2M12 16h2"/>',pending:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',dash:'<path d="M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z"/>',more:'<circle cx="6" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18" cy="12" r="1.4"/>'};
@@ -29,6 +29,9 @@ const r=await api('GET','projects');PROJS=r.projects;await loadProject(r.active&
 async function loadProject(id){const r=await api('GET','projects/'+id);PROJ={id:r.id,name:r.name};REV=r.rev;lastSaved=restore(r.state)?'':snap();
 clearInterval(PO.iv);PO={stage:'off'};syncCur();wkW=cur.w;wkSel=cur.d;rfDay={...cur};BD.day=co();wEdit=false;editing=0;adding=null;planOpen=new Set([cur.w]);resumePomo();remCheck()}
 // switch to another project (the open one is saved first)
+// Make shorter: read the modal's inputs into projUI; the name follows the day count until it is typed over
+function shortRead(){const n=projUI,d=$('#shd'),nm=$('#shn'),s=$('#shs');if(d){const v=parseInt(d.value,10);if(v!==n.days)n.prev=null;n.days=v}if(nm){if(nm.value.trim()!=n.name)n.auto=false;n.name=nm.value.trim()}if(s)n.start=s.value}
+function shortName(d){return T('sh.name',{p:PROJ?PROJ.name:'',n:d})}
 async function openProject(id,then){if(pLive()){toast(T('proj.stopTimer'));return}await flush();try{await loadProject(id);projUI=null;if(tab=='overall'||tab=='admin')tab='dash';then&&then();render();scrollTo(0,0);toast(T('proj.opened',{n:PROJ.name}))}catch(e){toast(errT(e))}}
 async function loadOverall(){await flush();OV={loading:true};try{const r=await api('GET','projects');PROJS=r.projects;OV={}}catch(e){OV={err:errT(e)}}if(tab=='overall')render()}
 async function refreshProjects(){try{PROJS=(await api('GET','projects')).projects}catch(e){}}
@@ -109,9 +112,19 @@ case'projsrc':projUI.name=$('#pnn').value;projUI.start=$('#pns').value;projUI.sr
 case'projcreate':{const n=projUI,name=$('#pnn').value.trim(),start=$('#pns').value||todayISO();n.name=name;n.start=start;
 if(!name){n.err=T('proj.needName');break}if(n.src=='csv'&&!n.text){n.err=T('proj.needFile');break}
 if(pLive()){toast(T('proj.stopTimer'));return}await flush();
-try{const r=await api('POST','projects',{name,start,source:n.src=='template'?'template':'empty'});const text=n.text,file=n.file,src=n.src;
+try{const r=await api('POST','projects',{name,start,source:n.src=='template'||n.src=='template2'?n.src:'empty'});const text=n.text,file=n.file,src=n.src;
 await openProject(r.id,()=>{if(src=='csv')openCE(file,text,{mode:'all'});else if(src=='empty'){tab='settings'}})}catch(e){n.err=errT(e)}break}
 case'overall':if(VIEW)return;projUI=null;go('overall');return;
+// ---- make shorter (a squeezed copy of this routine as a new project)
+case'shortopen':{if(VIEW)return;const len=routineLen();if(len<8){toast(T('sh.tooShort'));return}const d=len>56?56:Math.round(len/2);projUI={kind:'short',days:d,dedupe:true,thin:true,start:todayISO(),name:shortName(d),auto:true,prev:null,err:''};break}
+case'shortdays':shortRead();projUI.days=+D.v;if(projUI.auto)projUI.name=shortName(projUI.days);projUI.prev=null;break;
+case'shorttog':shortRead();projUI[D.k]=!projUI[D.k];projUI.prev=null;break;
+case'shortprev':case'shortmake':{const n=projUI;shortRead();const len=routineLen();n.err='';
+if(!(n.days>=1&&n.days<len)){n.err=T('sh.badDays',{n:len-1});break}if(!n.name){n.err=T('proj.needName');break}
+if(D.act=='shortmake'&&pLive()){toast(T('proj.stopTimer'));return}
+n.busy=true;render();await flush();const opt={days:n.days,dedupe:n.dedupe,thin:n.thin};
+try{if(D.act=='shortprev'){n.prev=await api('POST',`projects/${PROJ.id}/compress`,opt)}
+else{const r=await api('POST','projects',{...opt,name:n.name,start:n.start||todayISO(),source:'compress',from:PROJ.id});n.busy=false;await openProject(r.id,()=>{tab='plan'});toast(T('sh.done',{n:n.days}),1);return}}catch(e){n.err=errT(e)}n.busy=false;break}
 // ---- CSV table editor
 case'cedel':CE.rows.splice(+D.r,1);break;
 case'ceadd':{const last=CE.rows[CE.rows.length-1];CE.rows.push({id:0,day:last&&Number.isInteger(last.day)?last.day:(CE.week=='all'?1:(+CE.week-1)*7+1),s:last?last.s:(SUBJ[0]?'k:'+SUBJ[0][0]:'n:'),pri:'',perr:'',topic:'',wt:''});CE.only=false;setTimeout(()=>{const b=$('.mbody');if(b)b.scrollTop=b.scrollHeight;const i=$$('.cetable [data-ce=topic]');i.length&&i[i.length-1].focus()},0);break}
@@ -189,16 +202,26 @@ case'pdur':PO.dur=+D.v;break;
 case'pgo':{const c=+($('#pcus')||{}).value;if(c>=1)PO.dur=Math.min(180,Math.floor(c));PO.o=co();pomoStart('focus');break}
 case'ppause':credit();if(PO.kind=='watch')PO.acc+=Date.now()-PO.t0;else PO.left=PO.endAt-Date.now();PO.stage='pause';clearInterval(PO.iv);break;
 case'presume':if(PO.kind=='watch'){PO.t0=PO.last=Date.now();PO.stage='run';clearInterval(PO.iv);PO.iv=setInterval(pomoTick,250);break}{const L=PO.left,Tt=PO.total;pomoStart(PO.kind);PO.total=Tt;PO.endAt=Date.now()+L;break}
-case'pplus':if(PO.stage=='pause')PO.left+=300000;else PO.endAt+=300000;PO.total+=300000;break;
+case'pplus':case'paddgo':{const m=D.act=='pplus'?5:Math.floor(+($('#padd')||{}).value);if(!(m>=1&&m<=180)){$('#padd')?.focus();toast(T('po.addBad'));return}const ms=m*60000;if(PO.stage=='pause')PO.left+=ms;else PO.endAt+=ms;PO.total+=ms;if(D.act=='paddgo')toast(T('po.added',{m}));break}
+case'pcolor':SET.pomo.color=D.v;break;
 case'pskip':credit();pomoEnd();return;
 case'pwatch':PO.o=co();PO.kind='watch';PO.acc=0;PO.t0=PO.last=Date.now();PO.endAt=8.64e15;PO.total=0;PO.stage='run';clearInterval(PO.iv);PO.iv=setInterval(pomoTick,250);break;
 case'plog':{const m=+D.v;addSec(co(),m*60,PO.ref);toast(T(m>0?'po.logged':'po.removed',{m:Math.abs(m),t:hm(SEC[co()])}));break}
 case'pnext':pomoStart(PO.next);break;
 case'pstop':if(SET.fg.on&&SET.fg.strict&&PO.kind=='focus'&&(PO.stage=='run'||PO.stage=='pause')){if(!confirm(T('fg.stopQ')))return;fgDay(PO.o).b++}credit();clearInterval(PO.iv);FG=null;alarmOff();toast(T('po.stopped',{t:hm(SEC[PO.o])}));PO={stage:'off'};exitFs();break;
-case'pmin':if(PO.stage=='ready')PO={stage:'off'};else PO.fs=false;exitFs();break;
+case'pmin':if(PO.stage=='ready')PO={stage:'off'};else{PO.fs=false;PO.zen=false}exitFs();break;
 case'pmax':PO.fs=true;break;
 case'psnd':SET.snd.on=!SET.snd.on;break;
-case'pnative':if(document.fullscreenElement)exitFs();else document.documentElement.requestFullscreen?.().catch(()=>{});return;
+case'psearch':pSearch();return;
+case'psend':pSearchEnd();return;
+case'setsave':try{await savePrefsNow();toast(T('set.saved'))}catch(e){toast(T('set.saveFail'))}return;
+case'psmin':SET.fg.search=+D.v;break;
+case'tfont':SET.pomo.font=D.v;break;
+case'ptick':SET.tick.on=!SET.tick.on;toast('🕐 '+T('ts.tick')+': '+T(SET.tick.on?'ts.on':'ts.off'));break;
+case'pbg':SET.bg.on=!SET.bg.on;toast(T('ts.bg')+': '+T(SET.bg.on?'ts.on':'ts.off'));break;
+case'ttest':tickTest();return;
+case'btest':bgTest();return;
+case'pnative':if(PO.zen)zenOff();else{PO.zen=true;PO.fs=true;document.documentElement.requestFullscreen?.().catch(()=>{})}break;
 case'pdone':{const r=PO.ref;if(r.f){const x=pref(r);if(x)x.done=!x.done}else done.has(r.p)?done.delete(r.p):done.add(r.p);break}
 case'undo':if(undoSnap){const keep=[SET,SEC,HRC];restore(undoSnap);[SET,SEC,HRC]=keep;undoSnap=null;imp=null;closing=false;syncCur();wkW=cur.w;toast(T('undone'))}break;
 case'build':tab='plan';scrollTo(0,0);break;
@@ -219,9 +242,9 @@ if(r.done){const nx=LAD.find(x=>x>r.iv);if(nx){const n={id:++rid,pid:r.pid,o:co(
 else{const c=revs.find(x=>x.id==r.child);if(c&&!c.done)revs=revs.filter(x=>x!=c);r.child=0}}focusSel=`.check[data-rev="${id}"]`;render();return}
 const c=e.target.closest('.check');if(c){const i=+c.dataset.id;done.has(i)?done.delete(i):done.add(i);focusSel=`.check[data-id="${i}"]`;render();return}
 const a=e.target.closest('[data-act]');if(a)action(a)});
-document.addEventListener('keydown',e=>{if(PO.stage!='off'&&PO.fs&&!VIEW){if(e.key=='Escape'){e.preventDefault();$('#pomo [data-act=pmin]')?.click();return}if(e.key==' '&&!/INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName)){e.preventDefault();$('#pomo [data-act=ppause],#pomo [data-act=presume]')?.click();return}}
+document.addEventListener('keydown',e=>{if(PO.stage!='off'&&PO.fs&&!VIEW){if(e.key=='Escape'){e.preventDefault();$(PO.zen?'#pomo [data-act=pnative]':'#pomo [data-act=pmin]')?.click();return}if(PO.zen)zenWake();if(e.key==' '&&!/INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName)){e.preventDefault();$('#pomo [data-act=ppause],#pomo [data-act=presume]')?.click();return}}
 if(e.key=='Escape'&&(closing||imp||CE||printOpen||projUI)){closing=false;if(imp)imp=null;else CE=null;printOpen=false;projUI=null;render();return}if(e.key!='Enter')return;const i=e.target.id;
-const K={prn:'projrensave',pnn:'projcreate',lphone:'login',lname:'login',lpin:'login',lpin2:'login',opin:'pinsave',npin:'pinsave',npin2:'pinsave',rnm:'rnsave',edt:'save',edd:'save',eds:'save',edp:'save',addt:'addsave',rM:'remadd',snew:'sadd',qat:'qsave',fadd:'focadd',fam:'focadd',anm:'aadd',aph:'aadd'}[i];
+const K={shd:'shortprev',shn:'shortmake',prn:'projrensave',pnn:'projcreate',lphone:'login',lname:'login',lpin:'login',lpin2:'login',opin:'pinsave',npin:'pinsave',npin2:'pinsave',rnm:'rnsave',edt:'save',edd:'save',eds:'save',edp:'save',addt:'addsave',rM:'remadd',snew:'sadd',qat:'qsave',fadd:'focadd',fam:'focadd',anm:'aadd',aph:'aadd',psq:'psearch',padd:'paddgo'}[i];
 if(K){$(`[data-act=${K}]`)?.click();return}
 if(i=='tft'||i=='tfm'){$(`[data-act=tfadd][data-pre="${i.slice(0,2)}"]`).click();return}});
 document.addEventListener('change',e=>{const tg=e.target;if(VIEW&&(tg.dataset.rvo||tg.dataset.tgt!==undefined||tg.dataset.set||tg.dataset.setv||tg.dataset.smin||tg.id=='startDate'||tg.id=='csvFile'||tg.dataset.ce)){toast(T('ro.blocked'));render();return}
@@ -240,8 +263,11 @@ if(tg.dataset.ce){ceInput(tg);return}
 if(tg.dataset.cemap!==undefined){const n=tg.dataset.cemap,v=tg.value;if(v)CE.rows.forEach(r=>{if(r.s=='n:'+n)r.s=v});render();return}
 if(tg.id=='cew'){CE.week=tg.value;render();return}
 if(tg.id=='ceo'){CE.only=tg.checked;render();return}});
-document.addEventListener('input',e=>{if(e.target.dataset.ce&&e.target.tagName=='INPUT'){ceInput(e.target);return}if(e.target.dataset.set=='snd.vol')SET.snd.vol=+e.target.value;if(e.target.id=='cr')closeDraft=e.target.value;if(e.target.id=='rvd'){const l=$('#rvdl');if(l)l.textContent=rvDate(Math.floor(num(e.target.value)))}if(e.target.id=='lphone')LG.phone=e.target.value;if(e.target.id=='lname')LG.name=e.target.value});
+document.addEventListener('input',e=>{if(e.target.dataset.ce&&e.target.tagName=='INPUT'){ceInput(e.target);return}if(e.target.dataset.set=='snd.vol')SET.snd.vol=+e.target.value;if(/^(tick|bg)\.vol$/.test(e.target.dataset.set||'')){sp(e.target.dataset.set,+e.target.value);audioSync()}if(e.target.id=='cr')closeDraft=e.target.value;if(e.target.id=='rvd'){const l=$('#rvdl');if(l)l.textContent=rvDate(Math.floor(num(e.target.value)))}if(e.target.id=='lphone')LG.phone=e.target.value;if(e.target.id=='lname')LG.name=e.target.value;if(e.target.id=='psq')SQ=e.target.value});
 document.addEventListener('toggle',e=>{const t=e.target;if(t.matches&&t.matches('details.fold'))FOLD[t.dataset.fold]=t.open},true);
+// leaving browser full screen (Esc, F11) also leaves the black screen
+document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&PO.zen){PO.zen=false;render()}});
+['mousemove','touchstart'].forEach(ev=>document.addEventListener(ev,()=>{if(PO.zen)zenWake()},{passive:true}));
 window.addEventListener('blur',()=>setTimeout(()=>{if(fgAway())fgLeave()},60));window.addEventListener('focus',()=>setTimeout(fgReturn,60));
 // closing the window or reloading always asks first ("Leave site?"); the browser decides the wording
 window.addEventListener('beforeunload',e=>{if(!ME)return;flush(true);e.preventDefault();e.returnValue=''});

@@ -14,8 +14,8 @@ if ! up; then
   for _ in $(seq 1 40); do up && break; sleep 0.15; done
 fi
 
-# An app window (no tabs or address bar) when a Chromium-based browser exists, else the default browser.
-for b in google-chrome google-chrome-stable chromium chromium-browser brave-browser microsoft-edge; do
+# An app window (no tabs or address bar), in Brave first, else another Chromium-based browser, else the default browser.
+for b in brave brave-browser brave-browser-stable google-chrome google-chrome-stable chromium chromium-browser microsoft-edge; do
   if command -v "$b" >/dev/null 2>&1; then
     exec "$b" --app="$URL" >/dev/null 2>&1
   fi

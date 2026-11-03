@@ -315,3 +315,83 @@ body.auth .bnav{display:none}
 .devs{display:flex;flex-direction:column}.dev{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:9px 0;border-top:1px solid var(--line-soft);font-size:13px}.dev:first-child{border-top:0}.dev small{color:var(--muted)}
 #aman{scroll-margin-top:146px}.onphone{display:none}
 @media(max-width:560px){#aman{scroll-margin-top:80px}.onphone{display:inline}.bnav>button .n{background:var(--red);color:#fff;border-radius:99px}}
+.psearch{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;align-items:center;width:min(100%,520px)}.psearch input{flex:1;min-width:180px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:99px;padding:9px 16px}.psearch input::placeholder{color:rgba(255,255,255,.55)}.psearch small{width:100%;font-size:11px;opacity:.65}
+.pswin{width:100%;display:flex;gap:10px;justify-content:center;align-items:center;color:var(--gold-bright);font-size:13px;font-variant-numeric:tabular-nums}
+#pomo .zen{position:fixed;inset:0;z-index:95;background:#000;color:#EDEDED;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:16px;overflow:auto;cursor:none}
+.zen.show,.zen.still{cursor:auto}
+.zen .ztime{font-size:clamp(72px,22vw,240px);font-weight:600;letter-spacing:-4px;font-variant-numeric:tabular-nums;line-height:1}
+.zen.k-short .ztime,.zen.k-long .ztime{color:#7FD1A8}
+.zen .zlab{font-size:12px;letter-spacing:2px;text-transform:uppercase;opacity:.5;min-height:1em;text-align:center}
+.zbar{position:absolute;top:16px;right:16px}.zbar,.zacts{opacity:0;transition:opacity .4s;pointer-events:none}
+.zen.show .zbar,.zen.show .zacts,.zen.still .zbar,.zen.still .zacts{opacity:1;pointer-events:auto}
+.zb{background:transparent;border:1px solid rgba(255,255,255,.25);color:#EDEDED;border-radius:99px;padding:8px 18px;font-weight:600}
+.zen .psearch{opacity:.55;transition:opacity .3s}.zen .psearch:hover,.zen .psearch:focus-within,.zen.show .psearch{opacity:1}
+.zen .psearch input{background:#111;border-color:#333}.zen .psearch small{display:none}.zen .pswin{color:#C9A35B}
+.rtime,.zen .ztime{font-family:var(--tfont,'Roboto Mono',monospace);font-weight:var(--tweight,300);letter-spacing:0;white-space:nowrap}
+.tms{font-size:.38em;opacity:.6;letter-spacing:0}
+/* time cells: fixed width per character (no jitter), sized from the circle / screen width */
+.ring,#pomo .zen{container-type:inline-size}
+/* inline-flex centres a glyph even when it is wider than its cell (the narrow ':' and '.') */
+.tbox{display:inline-block;line-height:1;white-space:nowrap;font-size:calc(70cqi / (var(--tn,5) * var(--tw,.6)))}
+.zen .tbox{font-size:min(calc(84cqi / (var(--tn,5) * var(--tw,.6))),34vh)}
+.tbox i{font-style:normal;display:inline-flex;justify-content:center;width:1ch}/* ':' and '.' keep a full cell (their glyph is centred in it) and give back .45ch evenly on both sides */
+.tbox i.p{margin:0 -.225ch}
+.tbox .tms{font-size:.38em;opacity:.6}
+/* on/off buttons on the timer screen: lit gold when on, dimmed when off */
+.pb[aria-pressed="true"]{background:rgba(232,193,112,.22);border-color:var(--gold-bright);color:#fff}
+.pb[aria-pressed="false"]{opacity:.55}.pb[aria-pressed="false"]:hover{opacity:.85}
+/* ---------- timer screen, laid out as a study desk: what (top), time + controls (middle), sound / today / done (bottom) ---------- */
+#pomo .pfs{display:grid;grid-template-rows:auto 1fr auto;gap:12px;padding:20px clamp(16px,4vw,44px) 16px}
+#pomo .pfs-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:nowrap}
+.pfs-what{min-width:0;text-align:left}
+#pomo .psub{font-size:13px;opacity:.65;margin-bottom:4px}
+#pomo .ptitle{font-family:"Hind Siliguri",Inter,sans-serif;font-weight:500;font-size:clamp(19px,2.4vw,26px);line-height:1.35;max-width:62ch;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pfs-win{display:flex;gap:8px;flex:none}
+#pomo .pfs-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:4px 0;text-align:center}
+.pphase{font-size:14px;font-weight:600;color:var(--gold-bright);border:1px solid rgba(240,190,10,.45);border-radius:99px;padding:5px 14px}
+.k-short .pphase,.k-long .pphase{color:#7FD1A8;border-color:rgba(127,209,168,.5)}
+#pomo .pfs .ring{width:min(72vw,44vh,360px)}
+#pomo .pfs .rlab{text-transform:none;letter-spacing:0;font-size:13px;opacity:.7;margin-top:6px}
+.ptrack{list-style:none;display:flex;gap:8px;margin:-4px 0 0;padding:0}
+.ptrack li{width:26px;height:6px;border-radius:3px;background:rgba(255,255,255,.16)}
+.ptrack li.d{background:var(--gold-bright)}.ptrack li.c{background:linear-gradient(90deg,var(--gold-bright) 50%,rgba(255,255,255,.16) 50%)}
+.k-short .ptrack li.d,.k-long .ptrack li.d{background:#7FD1A8}
+.pctl{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap}
+.pprime{background:var(--gold-bright);color:#1A1A1A;border:0;border-radius:99px;height:58px;padding:0 34px;font-size:17px;font-weight:700;min-width:170px}
+.k-short .pprime,.k-long .pprime{background:#7FD1A8}
+.pprime:hover{filter:brightness(1.06)}
+.pround{width:50px;height:50px;border-radius:50%;flex:none;display:grid;place-items:center;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.2);color:#F4F1EA;font-weight:700;font-size:16px;padding:0}
+.pround:hover{background:rgba(255,255,255,.15)}.pround.sm{width:40px;height:40px;font-size:15px}
+.pdur{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;align-items:center}
+.pdur button{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.2);color:#F4F1EA;border-radius:99px;padding:8px 16px;font-weight:700;min-width:52px}
+.pdur button[aria-pressed="true"]{background:var(--gold-bright);border-color:var(--gold-bright);color:#1A1A1A}
+.pdur input{width:84px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:99px;padding:8px 12px;text-align:center}
+#pomo .plog{display:block;border:0;padding:0;max-width:560px;font-size:13px}
+#pomo .plog summary{cursor:pointer;opacity:.7;list-style-position:inside}
+#pomo .plog summary:hover{opacity:1}
+#pomo .plog>div{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:10px}
+#pomo .pfs .psearch{opacity:.85}#pomo .pfs .psearch:focus-within{opacity:1}
+.pdock{display:flex;align-items:center;justify-content:space-between;gap:12px 20px;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,.1);padding-top:14px}
+.psnds{display:flex;gap:6px;flex-wrap:wrap}.psnds .pb{padding:7px 11px;font-size:12px}
+.pstats{display:flex;gap:22px}
+.pstats span{display:flex;flex-direction:column;align-items:flex-start;line-height:1.25}
+.pstats small{font-size:11px;opacity:.6}.pstats b{font-size:15px;font-variant-numeric:tabular-nums}
+.pfs .pround:focus-visible,.pfs .pprime:focus-visible,.pfs .pb:focus-visible,.pdur button:focus-visible{outline:2px solid #fff;outline-offset:3px}
+@media (max-width:700px){
+  .pdock{justify-content:center}.pstats{order:-1;width:100%;justify-content:center}
+  #pomo .pfs .ring{width:min(76vw,40vh,320px)}
+  .pprime{height:54px;min-width:150px;padding:0 26px}
+}
+/* timer colours: --pbg1/--pbg2/--pacc come from Settings → Pomodoro (breaks keep their green) */
+#pomo .pfs{background:radial-gradient(circle at 50% 38%,var(--pbg1,#1F4E5F) 0%,var(--pbg2,#0E252C) 72%)}
+#pomo .pfs.k-short,#pomo .pfs.k-long{background:radial-gradient(circle at 50% 38%,#2C5A48 0%,#11291F 72%)}
+#pomo .pfs:not(.k-short):not(.k-long){--gold-bright:var(--pacc,#F0BE0A)}
+#pomo .pfs:not(.k-short):not(.k-long) .pphase{border-color:color-mix(in srgb,var(--pacc) 50%,transparent)}
+#pomo .pfs .pb[aria-pressed="true"]{background:color-mix(in srgb,var(--gold-bright) 22%,transparent)}
+.padd{display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap;justify-content:center}
+.padd label{opacity:.7}.padd span{opacity:.7}
+.padd input{width:76px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:99px;padding:7px 12px;text-align:center}
+.padd .pb{padding:7px 14px;border-radius:99px}
+.pswatch{width:42px;height:42px;border-radius:50%;border:2px solid transparent;padding:0;display:grid;place-items:center;cursor:pointer}
+.pswatch i{width:12px;height:12px;border-radius:50%}
+.pswatch.on{border-color:var(--ink);box-shadow:0 0 0 2px var(--paper)}

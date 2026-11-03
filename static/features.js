@@ -44,7 +44,7 @@ const msg=PO.kind=='focus'?T('po.focusEnd',{b:KL(PO.next)}):T('po.breakEnd');
 if(away)toast(T('po.away'));else{ding(PO.kind=='focus'?'focus':'brk');notify(msg,pName(PO.ref));toast(msg)}
 if(SET.pomo.auto&&!away)pomoStart(PO.next);else PO.stage='between';render()}
 function exitFs(){if(document.fullscreenElement)document.exitFullscreen?.().catch(()=>{})}
-function resumePomo(){try{const j=JSON.parse(localStorage.getItem(PKEY())||'null');if(j&&j.stage&&j.stage!='off'&&j.ref&&pref(j.ref)){PO=j;PO.fs=false;const shut=PO.closedAt;delete PO.closedAt;
+function resumePomo(){try{const j=JSON.parse(localStorage.getItem(PKEY())||'null');if(j&&j.stage&&j.stage!='off'&&j.ref&&pref(j.ref)){PO=j;PO.fs=false;PO.zen=false;const shut=PO.closedAt;delete PO.closedAt;
 if(PO.stage=='run'&&shut&&SET.fg.on&&(PO.kind=='focus'||PO.kind=='watch')){fgClosed(shut);return}
 if(PO.stage=='run'){credit();if(PO.endAt<=Date.now())pomoEnd(1);else PO.iv=setInterval(pomoTick,250)}}}catch(e){}}
 // the app was closed during a focus session: that time counts as away (pause / not counted / broken, as set)
@@ -56,26 +56,71 @@ if(SET.fg.strict&&PO.kind=='focus'&&away>=SET.fg.strictMin*60){d.b++;PO.next='fo
 else if(SET.fg.mode=='pause'){if(PO.kind=='watch')PO.acc+=cut-PO.t0;else PO.left=PO.endAt-cut;PO.stage='pause';toast(T('fg.closedPaused',{t}))}
 else{PO.last=now;PO.iv=setInterval(pomoTick,250);toast(T('fg.closedNot',{t}))}
 PO.fs=true;savePomo()}
-function renderPomo(){if(FG&&(!SET.fg.on||PO.stage=='off')){FG=null;alarmOff()}if(!ME||VIEW){alarmOff();$('#pomo').innerHTML='';document.body.classList.remove('has-mini');wakeOff();return}savePomo();PO.stage=='run'?wakeOn():wakeOff();const el=$('#pomo');if(PO.stage=='off'){el.innerHTML='';document.body.classList.remove('has-mini');document.title=TITLE;return}
+// the timer's font (Settings → Pomodoro): [font-family, weight]
+// colours of the timer screen (Settings → Pomodoro); a break keeps its green
+const PCOL={teal:['#1F4E5F','#0E252C','#F0BE0A'],indigo:['#2E3270','#121430','#F5A65B'],plum:['#4A2545','#1E0F1C','#F2B880'],slate:['#3A4148','#15181B','#8FD3FE'],coffee:['#4B3528','#1C130E','#E8B86B'],ocean:['#13466B','#081B2C','#5EE0C4']};
+// [font-family, weight, width of "0" in em] - the width sizes the time to fit the circle
+const TFONT={roboto:["'Roboto Mono',monospace",300,.6],jet:["'JetBrains Mono',monospace",500,.6],orbit:['Orbitron,sans-serif',500,.85],lcd:["'Share Tech Mono',monospace",400,.55]};
+// mm:ss, or mm:ss.cc / mm:ss.mmm when milliseconds are on (counted down, so no rounding up).
+// Every character sits in its own fixed-width cell so the time never shifts sideways; --tn (width in cells) sizes it to fit.
+function tHtml(v){const n=+SET.pomo.ms,ms=Math.max(0,Math.floor(v)),s=Math.floor(ms/1000),main=n?`${pad(Math.floor(s/60))}:${pad(s%60)}`:mmss(v),frac=n?'.'+String(ms%1000).padStart(3,'0').slice(0,n):'';
+const cells=x=>[...x].map(ch=>/\d/.test(ch)?`<i>${ch}</i>`:`<i class="p">${ch}</i>`).join(''),w=x=>[...x].reduce((a,ch)=>a+(/\d/.test(ch)?1:.55),0);
+return `<span class="tbox" style="--tn:${(w(main)+w(frac)*.38).toFixed(2)}">${cells(main)}${frac?`<small class="tms">${cells(frac)}</small>`:''}</span>`}
+// with milliseconds the time is drawn every frame, not 4 times a second
+function msLoop(){if(+SET.pomo.ms&&PO.stage=='run'&&$('#ptime')){paintPomo();requestAnimationFrame(msLoop)}else msLoop.on=0}
+function renderPomo(){audioSync();{const f=TFONT[SET.pomo.font]||TFONT.roboto,s=document.documentElement.style;s.setProperty('--tfont',f[0]);s.setProperty('--tweight',f[1]);s.setProperty('--tw',f[2])}if(+SET.pomo.ms&&PO.stage=='run'&&!msLoop.on){msLoop.on=1;requestAnimationFrame(msLoop)}if(FG&&(!SET.fg.on||PO.stage=='off')){FG=null;alarmOff()}if(!ME||VIEW){alarmOff();$('#pomo').innerHTML='';document.body.classList.remove('has-mini');wakeOff();return}savePomo();PO.stage=='run'?wakeOn():wakeOff();const el=$('#pomo');if(PO.stage=='off'){el.innerHTML='';document.body.classList.remove('has-mini');document.title=TITLE;return}
 const r=PO.ref,k=PO.kind,o=PO.o,st=PO.stage,rd=st=='ready',bt=st=='between',run=st=='run',pa=st=='pause',dn=r.f?(pref(r)||{}).done:done.has(r.p),ev=SET.pomo.every;
-if(!PO.fs){document.body.classList.add('has-mini');el.innerHTML=`<div class="pmini k-${bt?PO.next:k}${pa||bt?' paused':''}" role="region" aria-label="${T('po.timer')}"><span class="pdot"></span><span class="pmt"><b id="pmtime">${bt?T('po.ready'):mmss(PO.total)}</b><small>${esc(KL(bt?PO.next:k))} · ${esc(pName(r))}</small></span>${run?`<button data-act="ppause" aria-label="${T('po.pause')}">⏸</button>`:pa?`<button data-act="presume" aria-label="${T('po.resume')}">▶</button>`:`<button data-act="pnext" aria-label="${T('po.start')}">▶</button>`}<button data-act="pmax" aria-label="${T('po.expand')}">⤢</button><button data-act="pstop" aria-label="${T('po.stop')}">■</button></div>`;paintPomo();return}
+if(!PO.fs){document.body.classList.add('has-mini');el.innerHTML=`<div class="pmini k-${bt?PO.next:k}${pa||bt?' paused':''}" role="region" aria-label="${T('po.timer')}"><span class="pdot"></span><span class="pmt"><b id="pmtime">${bt?T('po.ready'):mmss(PO.total)}</b><small>${esc(KL(bt?PO.next:k))} · ${esc(pName(r))}</small>${swOk()?`<small id="pswt">${swLeft()}</small>`:''}</span>${run?`<button data-act="ppause" aria-label="${T('po.pause')}">⏸</button>`:pa?`<button data-act="presume" aria-label="${T('po.resume')}">▶</button>`:`<button data-act="pnext" aria-label="${T('po.start')}">▶</button>`}<button data-act="pmax" aria-label="${T('po.expand')}">⤢</button><button data-act="pstop" aria-label="${T('po.stop')}">■</button></div>`;paintPomo();return}
 document.body.classList.remove('has-mini');
-el.innerHTML=`<div class="pfs k-${rd?'focus':bt?PO.next:k}" role="dialog" aria-modal="true" aria-label="${T('po.timer')}"><div class="pfs-top"><span class="pk">${rd?'Pomodoro':bt?T('po.nextStep',{s:KL(PO.next)}):KL(k)}</span><span class="pses">${'●'.repeat(PO.n%ev)}${'○'.repeat(ev-PO.n%ev)} · ${T('po.sessions',{n:PO.n})}</span><span class="pfs-sp"></span><button class="pb" data-act="psnd" aria-pressed="${SET.snd.on}">${SET.snd.on?'🔔 '+T('po.sound'):'🔕 '+T('po.soundOff')}</button><button class="pb" data-act="pnative">⛶ ${T('po.full')}</button><button class="pb" data-act="pmin">${rd?'✕ '+T('close'):'- '+T('po.min')}</button></div>
-<div class="pfs-mid"><div class="psub">${esc(pSub(r))}</div><h2 class="ptitle">${esc(pName(r))}</h2>
-<div class="ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="rbg" cx="60" cy="60" r="54"/><circle class="rfg" id="pring" cx="60" cy="60" r="54"/></svg><div class="rin"><div class="rtime" id="ptime">${rd?mmss(PO.dur*60000):bt?mmss(phMin(PO.next)*60000):mmss(PO.total)}</div><div class="rlab">${rd?(PO.plan&&PO.dur==PO.plan?T('po.fromPlan'):T('po.howLong')):bt?T('po.ready'):pa?T('po.paused'):KL(k)}</div></div></div>
-${rd?`<div class="pchips">${PO.plan&&![25,45,50,60,90].includes(PO.plan)?`<button data-act="pdur" data-v="${PO.plan}"${PO.dur==PO.plan?' class="on"':''}>📋 ${PO.plan}</button>`:''}${[25,45,50,60,90].map(m=>`<button data-act="pdur" data-v="${m}"${PO.dur==m?' class="on"':''}>${PO.plan==m?'📋 ':''}${m}</button>`).join('')}<label>${T('po.other')} <input type="number" id="pcus" min="1" max="180" placeholder="${T('po.minutes')}"></label></div><div class="pacts"><button class="pbig" data-act="pgo">▶ ${T('po.start')}</button><button class="pb" data-act="pwatch">⏱ ${T('po.watch')}</button></div><div class="plog"><span>${T('po.logQ')}</span>${[15,30,45,60,90].map(m=>`<button data-act="plog" data-v="${m}">+${T('t.min',{m})}</button>`).join('')}<button data-act="plog" data-v="-15" aria-label="${T('po.minus')}">−15</button></div>`:
-`<div class="pacts">${run?`<button class="pbig" data-act="ppause">⏸ ${T('po.pause')}</button>`:pa?`<button class="pbig" data-act="presume">▶ ${T('po.resume')}</button>`:`<button class="pbig" data-act="pnext">▶ ${T('po.startX',{s:KL(PO.next)})}</button>`}${bt||k=='watch'?'':`<button class="pb" data-act="pplus">+${T('t.min',{m:5})}</button><button class="pb" data-act="pskip">⏭ ${T('po.skip')}</button>`}<button class="pb" data-act="pstop">■ ${T('po.stop')}</button></div>`}
-<button class="pb pdone${dn?' on':''}" data-act="pdone">${dn?'✓ '+T('po.doneOn'):'✓ '+T('po.done')}</button></div>
-${PO.dist&&PO.dist.n?`<div class="pfs-foot" style="color:var(--gold-bright)">${T('fg.session',{n:PO.dist.n,t:PO.dist.sec<60?T('t.sec',{s:Math.round(PO.dist.sec)}):hm(PO.dist.sec)})}</div>`:''}<div class="pfs-foot">${T('po.foot',{t:`<b id="pftime">${hm(SEC[o])}</b>`,h:hrs(o),g:tgt(o),p:hm((pref(r)||{}).sec)})}</div></div>`;paintPomo()}
-function paintPomo(){const w=PO.kind=='watch',now=Date.now(),v=PO.stage=='run'?(w?PO.acc+now-PO.t0:PO.endAt-now):PO.stage=='pause'?(w?PO.acc:PO.left):null;if(v==null){document.title=TITLE;return}const t=mmss(v),ring=$('#pring');
-[['#ptime',t],['#pmtime',t],['#pftime',hm(SEC[PO.o])]].forEach(([q,x])=>{const e=$(q);if(e)e.textContent=x});if(ring)ring.style.strokeDashoffset=339.292*(w?1-(v%3600000)/3600000:1-Math.max(0,v)/PO.total);document.title=`${t} · ${KL(PO.kind)} - Routine`}
+if(PO.zen){el.innerHTML=zenHtml();paintPomo();return}
+// the timer screen: what you study (top), the time and its controls (middle), sound / today / done (bottom bar)
+const tog=(act,on,ic,l)=>`<button class="pb" data-act="${act}" aria-pressed="${on}" title="${l}">${ic} ${l}: <b>${T(on?'ts.on':'ts.off')}</b></button>`;
+const ends=run&&k!='watch'?T('po.endsAt',{t:new Date(PO.endAt).toLocaleTimeString(LANG()=='bn'?'bn-BD':'en-GB',{hour:'numeric',minute:'2-digit'})}):'';
+const phase=rd?T('po.timer'):bt?T('po.nextStep',{s:KL(PO.next)}):KL(k);
+const ctl=rd?`<div class="pdur" role="group" aria-label="${T('po.howLong')}">${PO.plan&&![25,45,50,60,90].includes(PO.plan)?`<button data-act="pdur" data-v="${PO.plan}" aria-pressed="${PO.dur==PO.plan}">📋 ${PO.plan}</button>`:''}${[25,45,50,60,90].map(m=>`<button data-act="pdur" data-v="${m}" aria-pressed="${PO.dur==m}">${PO.plan==m?'📋 ':''}${m}</button>`).join('')}<input type="number" id="pcus" min="1" max="180" placeholder="${T('po.other')}" aria-label="${T('po.other')} (${T('po.minutes')})"></div>
+<div class="pctl"><button class="pprime" data-act="pgo">▶ ${T('po.start')}</button><button class="pround" data-act="pwatch" title="${T('po.watch')}" aria-label="${T('po.watch')}">⏱</button></div>
+<details class="plog"><summary>${T('po.logQ')}</summary><div>${[15,30,45,60,90].map(m=>`<button data-act="plog" data-v="${m}">+${T('t.min',{m})}</button>`).join('')}<button data-act="plog" data-v="-15" aria-label="${T('po.minus')}">−15</button></div></details>`:
+`<div class="pctl">${bt||k=='watch'?'':`<button class="pround" data-act="pplus" title="+${T('t.min',{m:5})}" aria-label="+${T('t.min',{m:5})}">+5</button>`}${run?`<button class="pprime" data-act="ppause" title="Space">⏸ ${T('po.pause')}</button>`:pa?`<button class="pprime" data-act="presume" title="Space">▶ ${T('po.resume')}</button>`:`<button class="pprime" data-act="pnext">▶ ${T('po.startX',{s:KL(PO.next)})}</button>`}${bt||k=='watch'?'':`<button class="pround" data-act="pskip" title="${T('po.skip')}" aria-label="${T('po.skip')}">⏭</button>`}<button class="pround" data-act="pstop" title="${T('po.stop')}" aria-label="${T('po.stop')}">■</button></div>`;
+const away=PO.dist&&PO.dist.n?`<span title="${T('fg.session',{n:PO.dist.n,t:PO.dist.sec<60?T('t.sec',{s:Math.round(PO.dist.sec)}):hm(PO.dist.sec)})}"><small>${T('pst.away')}</small><b>${PO.dist.n}×</b></span>`:'';
+const pc=PCOL[SET.pomo.color]||PCOL.teal;
+el.innerHTML=`<div class="pfs k-${rd?'focus':bt?PO.next:k}" style="--pbg1:${pc[0]};--pbg2:${pc[1]};--pacc:${pc[2]}" role="dialog" aria-modal="true" aria-label="${T('po.timer')}">
+<header class="pfs-top"><div class="pfs-what"><div class="psub">${esc(pSub(r))}</div><h2 class="ptitle">${esc(pName(r))}</h2></div>
+<div class="pfs-win"><button class="pround sm" data-act="pnative" title="${T('po.full')}" aria-label="${T('po.full')}">⛶</button><button class="pround sm" data-act="pmin" title="${rd?T('close'):T('po.min')} (Esc)" aria-label="${rd?T('close'):T('po.min')}">${rd?'✕':'–'}</button></div></header>
+<div class="pfs-mid"><div class="pphase">${phase}</div>
+<div class="ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="rbg" cx="60" cy="60" r="54"/><circle class="rfg" id="pring" cx="60" cy="60" r="54"/></svg><div class="rin"><div class="rtime" id="ptime">${tHtml(rd?PO.dur*60000:bt?phMin(PO.next)*60000:PO.total)}</div><div class="rlab">${rd?(PO.plan&&PO.dur==PO.plan?T('po.fromPlan'):T('po.howLong')):bt?T('po.ready'):pa?T('po.paused'):ends||KL(k)}</div></div></div>
+<ol class="ptrack" title="${T('po.sessions',{n:PO.n})}" aria-label="${T('po.sessions',{n:PO.n})}">${Array.from({length:ev},(_,i)=>`<li class="${i<PO.n%ev?'d':i==PO.n%ev&&k=='focus'&&(run||pa)?'c':''}"></li>`).join('')}</ol>
+${ctl}${rd||bt||k=='watch'?'':`<div class="padd"><label for="padd">${T('po.addQ')}</label><input type="number" id="padd" min="1" max="180" placeholder="60"><span>${T('po.minutes')}</span><button class="pb" data-act="paddgo">${T('add')}</button></div>`}${psBox()}</div>
+<footer class="pdock"><div class="psnds" role="group">${tog('psnd',SET.snd.on,SET.snd.on?'🔔':'🔕',T('po.sound'))}${tog('ptick',SET.tick.on,'🕐',T('ts.tickShort'))}${tog('pbg',SET.bg.on,SET.bg.kind=='rain'?'🌧':'〰',T('ts.bgShort'))}</div>
+<div class="pstats"><span><small>${T('pst.today')}</small><b id="pftime">${hm(SEC[o])}</b></span><span><small>${T('pst.hours')}</small><b>${hrs(o)} / ${tgt(o)}</b></span><span><small>${T('pst.topic')}</small><b>${hm((pref(r)||{}).sec)}</b></span>${away}</div>
+<button class="pb pdone${dn?' on':''}" data-act="pdone" aria-pressed="${!!dn}">${dn?'✓ '+T('po.doneOn'):'✓ '+T('po.done')}</button></footer></div>`;paintPomo()}
+function paintPomo(){const sw=$('#pswt');if(sw){if(swOk())sw.textContent=swLeft();else{render();return}}const w=PO.kind=='watch',now=Date.now(),v=PO.stage=='run'?(w?PO.acc+now-PO.t0:PO.endAt-now):PO.stage=='pause'?(w?PO.acc:PO.left):null;if(v==null){document.title=TITLE;return}const t=mmss(v),ring=$('#pring');
+{const e=$('#ptime');if(e)e.innerHTML=tHtml(v)}[['#pmtime',t],['#pftime',hm(SEC[PO.o])]].forEach(([q,x])=>{const e=$(q);if(e)e.textContent=x});if(ring)ring.style.strokeDashoffset=339.292*(w?1-(v%3600000)/3600000:1-Math.max(0,v)/PO.total);document.title=`${t} · ${KL(PO.kind)} - Routine`}
 
 // ---------- Focus guard: notices when you leave the app during a focus session ----------
 // It can't block other apps (a web app isn't allowed to) - it pauses or stops counting, reminds you, and keeps score.
 let FG=null,WL=null;
 const fgAway=()=>document.hidden||(SET.fg.blur&&!document.hasFocus());
+// 🔍 search from the timer: Google opens in its own window, and for SET.fg.search minutes being away isn't "away".
+// Only the clock counts: Google's Cross-Origin-Opener-Policy cuts the link to the window, so it always looks closed from here.
+let SWuntil=0,SQ='';
+const swOk=()=>Date.now()<SWuntil;
+function pSearch(){const q=($('#psq')?.value||'').trim();if(!q){$('#psq')?.focus();return}SQ='';
+let w=null;try{w=window.open('https://www.google.com/search?q='+encodeURIComponent(q),'_blank','popup,width=1000,height=760')}catch(e){}
+if(!w){toast(T('ps.blocked'));return}
+const live=SET.fg.on&&PO.stage=='run'&&(PO.kind=='focus'||PO.kind=='watch');SWuntil=Date.now()+SET.fg.search*60000;toast(live?T('ps.open',{m:SET.fg.search}):T('ps.opened'));render()}
+function pSearchEnd(){SWuntil=0;render()}
+const swLeft=()=>`🔍 ${T('ps.left',{t:mmss(SWuntil-Date.now())})}`;
+const psBox=()=>SET.fg.searchOn?`<div class="psearch" role="search"><input type="search" id="psq" value="${esc(SQ)}" placeholder="🔍 ${T('ps.ph')}" aria-label="${T('ps.ph')}" autocomplete="off"><button class="pb" data-act="psearch">${T('ps.go')}</button><small>${SET.fg.on?T('ps.hint',{m:SET.fg.search}):T('ps.hintOff')}</small>${swOk()?`<span class="pswin"><b id="pswt">${swLeft()}</b><button class="pb" data-act="psend">✕ ${T('ps.end')}</button></span>`:''}</div>`:'';
+// ⛶ full screen: black, only the time and the search box; the controls show on a mouse move or tap, and always while not running
+function zenHtml(){const r=PO.ref,k=PO.kind,st=PO.stage,rd=st=='ready',bt=st=='between',run=st=='run',pa=st=='pause';
+const [act,l]=run?['ppause','⏸ '+T('po.pause')]:pa?['presume','▶ '+T('po.resume')]:bt?['pnext','▶ '+T('po.startX',{s:KL(PO.next)})]:['pgo','▶ '+T('po.start')];
+return `<div class="zen k-${rd?'focus':bt?PO.next:k}${run?'':' still'}" role="dialog" aria-modal="true" aria-label="${T('po.timer')}"><div class="zbar"><button class="zb" data-act="pnative">✕ ${T('zen.exit')}</button></div>
+<div class="ztime" id="ptime">${tHtml(rd?PO.dur*60000:bt?phMin(PO.next)*60000:PO.total)}</div><div class="zlab">${pa?T('po.paused'):bt?T('po.nextStep',{s:KL(PO.next)}):rd?esc(pName(r)):''}</div>
+<div class="zacts"><button class="zb" data-act="${act}">${l}</button></div>${psBox()}</div>`}
+function zenOff(){PO.zen=false;exitFs()}
+let zenT=0;function zenWake(){const z=$('#pomo .zen');if(!z)return;z.classList.add('show');clearTimeout(zenT);zenT=setTimeout(()=>$('#pomo .zen')?.classList.remove('show'),2500)}
 const fgDay=o=>FGD[o]=FGD[o]||{n:0,sec:0,b:0};
-function fgLeave(){if(FG||VIEW||!SET.fg.on||PO.stage!='run'||!(PO.kind=='focus'||PO.kind=='watch'))return;FG={at:Date.now(),paused:false,broken:false,warned:0}}
+function fgLeave(){if(swOk())return;if(FG||VIEW||!SET.fg.on||PO.stage!='run'||!(PO.kind=='focus'||PO.kind=='watch'))return;FG={at:Date.now(),paused:false,broken:false,warned:0}}
 function fgCheck(){if(!FG)return;const now=Date.now(),away=(now-FG.at)/1000,g=SET.fg.grace;if(away<g)return;const cut=FG.at+g*1000;
 if(SET.fg.strict&&!FG.broken&&PO.kind=='focus'&&away>=SET.fg.strictMin*60){credit();FG.broken=true;clearInterval(PO.iv);fgDay(PO.o).b++;PO.next='focus';PO.stage='between';notify(T('fg.brokenN'),pName(PO.ref));savePomo();return}
 if(SET.fg.mode=='pause'&&!FG.paused&&PO.stage=='run'){credit();FG.paused=true;if(PO.kind=='watch')PO.acc+=cut-PO.t0;else PO.left=PO.endAt-cut;PO.stage='pause';clearInterval(PO.iv);savePomo()}
@@ -84,7 +129,8 @@ function fgReturn(){if(!FG||fgAway())return;fgCheck();alarmOff();const away=(Dat
 const d=fgDay(PO.o);d.n++;d.sec+=away;PO.dist=PO.dist||{n:0,sec:0};PO.dist.n++;PO.dist.sec+=away;if(PO.stage=='run')PO.last=Date.now();
 const t=away<60?T('t.sec',{s:Math.round(away)}):hm(away);toast(f.broken?T('fg.broken',{t}):f.paused?T('fg.paused',{t}):T('fg.notCounted',{t}));PO.fs=true;render()}
 // while the app is hidden timers slow down, so also check on a separate clock
-setInterval(()=>{if(FG){fgCheck();if(!fgAway())fgReturn()}},5000);
+setInterval(()=>{if(FG){fgCheck();if(!fgAway())fgReturn()}else if(fgAway())fgLeave()},5000);
+setInterval(()=>{if(SWuntil&&PO.stage!='run'&&$('#pswt'))paintPomo()},1000);
 // older settings had a yes/no reminder
 const fgAlert=()=>SET.fg.alert||(SET.fg.remind===false?'off':'alarm');
 function audioReady(){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();if(AC.state=='suspended')AC.resume()}catch(e){}}
@@ -95,6 +141,40 @@ o.type='square';o.frequency.value=880;o2.type='sawtooth';o2.frequency.value=1320
 pulse.type='square';pulse.frequency.value=4;pg.gain.value=.5;pulse.connect(pg);
 g.gain.value=Math.max(.18,SET.snd.vol*.5);pg.connect(g.gain);o.connect(g);o2.connect(g);g.connect(AC.destination);[o,o2,lfo,pulse].forEach(x=>x.start());ALARM={nodes:[o,o2,lfo,pulse],g}}catch(e){ALARM=null}}
 function alarmOff(){if(!ALARM)return;try{ALARM.nodes.forEach(x=>x.stop());ALARM.g.disconnect()}catch(e){}ALARM=null}
+// ---------- Tick and background sound while the timer runs (made here, no sound files) ----------
+// 'when' is focus, break or both; the stopwatch counts as focus
+let NZ={},TK=null,BG=null;
+const sWhen=w=>w=='both'||w==(PO.kind=='short'||PO.kind=='long'?'break':'focus');
+function noiseBuf(kind){if(NZ[kind])return NZ[kind];const n=AC.sampleRate*4,b=AC.createBuffer(1,n,AC.sampleRate),d=b.getChannelData(0);let last=0;
+for(let i=0;i<n;i++){const w=Math.random()*2-1;if(kind=='brown'){last=(last+.02*w)/1.02;d[i]=last*3.5}else d[i]=w}return NZ[kind]=b}
+// one tick at audio time t into out; n alternates tick / tock
+// recorded ticks (static/sounds): each file is one 2-second tick-tock cycle, its first tick 15 ms in
+const TFILE={sfx:'tick-sfx',cinematic:'tick-cinematic',clock:'tick-clock'},TBUF={};
+function tickLoad(style){const f=TFILE[style];if(!f||TBUF[style]||!AC)return;TBUF[style]='loading';
+fetch('sounds/'+f+'.wav').then(r=>r.arrayBuffer()).then(b=>AC.decodeAudioData(b)).then(b=>{TBUF[style]=b}).catch(()=>{delete TBUF[style]})}
+function tickAt(t,n,style,out){const g=AC.createGain(),v=Math.max(.0002,SET.tick.vol);g.connect(out);
+if(TFILE[style]){const b=TBUF[style];if(!(b instanceof AudioBuffer)){tickLoad(style);return}if(n%2)return;const s=AC.createBufferSource();s.buffer=b;g.gain.value=v*.8;s.connect(g);s.start(Math.max(t-.015,AC.currentTime));return}
+if(style=='soft'){const o=AC.createOscillator();o.type='sine';o.frequency.value=n%2?900:1000;g.gain.setValueAtTime(v*.18,t);g.gain.exponentialRampToValueAtTime(.0001,t+.04);o.connect(g);o.start(t);o.stop(t+.05);return}
+if(style=='wood'){const o=AC.createOscillator();o.type='triangle';o.frequency.setValueAtTime(n%2?700:820,t);o.frequency.exponentialRampToValueAtTime(400,t+.05);g.gain.setValueAtTime(v*.5,t);g.gain.exponentialRampToValueAtTime(.0001,t+.07);o.connect(g);o.start(t);o.stop(t+.08);return}
+const s=AC.createBufferSource(),f=AC.createBiquadFilter();s.buffer=noiseBuf('white');f.type='bandpass';f.frequency.value=n%2?1700:2600;f.Q.value=6;g.gain.setValueAtTime(v*1.6,t);g.gain.exponentialRampToValueAtTime(.0001,t+.035);s.connect(f);f.connect(g);s.start(t,Math.random()*3);s.stop(t+.04)}
+// schedule ticks a little ahead so a slowed (hidden) page keeps time; out is cut off at once on stop
+function tickRun(){if(!TK)return;const ahead=AC.currentTime+1.5;if(TK.next<AC.currentTime)TK.next=AC.currentTime+.05;// came back from a long stall: no burst of old ticks
+while(TK.next<ahead){tickAt(TK.next,TK.n++,SET.tick.style,TK.out);TK.next+=1}}
+const bgVol=k=>SET.bg.vol*(k=='rain'?.35:.6);
+function bgMake(k){const s=AC.createBufferSource(),g=AC.createGain();s.buffer=noiseBuf(k=='brown'?'brown':'white');s.loop=true;// rain is filtered white noise
+let last=s;
+if(k=='rain'){const hp=AC.createBiquadFilter(),lp=AC.createBiquadFilter();hp.type='highpass';hp.frequency.value=500;lp.type='lowpass';lp.frequency.value=5000;s.connect(hp);hp.connect(lp);last=lp}
+last.connect(g);g.gain.value=0;g.connect(AC.destination);s.start();g.gain.setTargetAtTime(bgVol(k),AC.currentTime,.3);return{kind:k,s,g}}
+function bgKill(b){try{b.g.gain.setTargetAtTime(0,AC.currentTime,.15);b.s.stop(AC.currentTime+.6)}catch(e){}}
+function audioSync(){const run=ME&&!VIEW&&PO.stage=='run',wantT=run&&SET.tick.on&&sWhen(SET.tick.when),wantB=run&&SET.bg.on&&sWhen(SET.bg.when);
+if(wantT||wantB)audioReady();if(!AC)return;if(SET.tick.on)tickLoad(SET.tick.style);
+if(wantT&&!TK){const out=AC.createGain();out.connect(AC.destination);const rem=PO.kind=='watch'?1000-(PO.acc+Date.now()-PO.t0)%1000:(PO.endAt-Date.now())%1000;
+TK={out,n:0,next:AC.currentTime+rem/1000,iv:setInterval(tickRun,250)};tickRun()}
+else if(!wantT&&TK){clearInterval(TK.iv);TK.out.disconnect();TK=null}
+if(BG&&(!wantB||BG.kind!=SET.bg.kind)){bgKill(BG);BG=null}
+if(wantB&&!BG)BG=bgMake(SET.bg.kind);else if(BG)BG.g.gain.setTargetAtTime(bgVol(BG.kind),AC.currentTime,.1)}
+async function tickTest(){audioReady();if(!AC)return;const st=SET.tick.style;if(TFILE[st]&&!(TBUF[st] instanceof AudioBuffer)){tickLoad(st);for(let i=0;i<30&&!(TBUF[st] instanceof AudioBuffer);i++)await new Promise(r=>setTimeout(r,100))}const out=AC.createGain();out.connect(AC.destination);for(let i=0;i<4;i++)tickAt(AC.currentTime+.1+i,i,SET.tick.style,out)}
+let BGT=null;function bgTest(){audioReady();if(!AC)return;if(BGT){bgKill(BGT.b);clearTimeout(BGT.t)}const b=bgMake(SET.bg.kind);BGT={b,t:setTimeout(()=>{bgKill(b);BGT=null},4000)}}
 async function wakeOn(){try{if(!WL&&'wakeLock' in navigator&&!document.hidden){WL=await navigator.wakeLock.request('screen');WL.addEventListener('release',()=>{WL=null})}}catch(e){WL=null}}
 function wakeOff(){try{WL&&WL.release()}catch(e){}WL=null}
 const focusPct=(a,b)=>{let f=0,w=0,n=0,br=0;for(let o=a;o<=b;o++){f+=SEC[o]||0;const g=FGD[o];if(g){w+=g.sec;n+=g.n;br+=g.b}}return f+w>0&&(w||n)?{p:Math.round(100*f/(f+w)),n,br,w}:null};
@@ -120,7 +200,7 @@ function tags(part){let text=part,pri='',est='',m;for(let i=0;i<3;i++){if((m=tex
 function csvToRows(text){const rows=parseCSV(text).map(r=>r.map(c=>String(c||'').trim())),isWeek=c=>/^(সপ্তাহ|week)\s*[0-9০-৯]+/i.test(c||'');
 if(rows.some(r=>isWeek(r[0]))&&rows.some(r=>/^day$/i.test(r[0]||''))){const out=[];let week=0,cols=null,title='',ws='';
 rows.forEach(r=>{const first=r[0]||'';if(!r.some(Boolean))return;
-if(isWeek(first)){week++;const full=r.filter(Boolean).join(', ');title=full.includes(' - ')?full.split(' - ').slice(1).join(' - ').trim():full;ws=title.split(' - ')[0].trim()||title;return}
+if(isWeek(first)){week++;const full=r.filter(Boolean).join(', ');title=full.includes(' - ')?full.split(' - ').slice(1).join(' - ').trim():full;ws=title.split(/ - | \+ /)[0].trim()||title;return}
 if(/^day$/i.test(first)){cols=r.slice(1).filter(Boolean);return}
 const m=first.match(/^day\s*([0-9০-৯]+)$/i);if(!m||!cols||!week)return;const d=num(m[1]);
 r.slice(1,1+cols.length).forEach((cell,ci)=>cell.split('|').map(x=>x.trim()).filter(Boolean).forEach(part=>{const t=tags(part);
