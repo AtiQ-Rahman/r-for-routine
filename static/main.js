@@ -1,17 +1,17 @@
 'use strict';
 // ---------- render ----------
-const TABS=()=>[['today',T('nav.today')],['week',T('nav.week')],['pending',T('nav.pending')],['dash',T('nav.dash')],['notes',T('nav.notes')],['plan',T('nav.plan')],['settings',T('nav.settings')],...(ME&&ME.is_admin&&!VIEW?[['admin',T('nav.admin')]]:[])];
-const V={today:vToday,week:vWeek,pending:vPending,dash:vDash,notes:vNotes,plan:vPlan,settings:vSettings,admin:vAdmin,overall:vOverall};
+const TABS=()=>[['today',T('nav.today')],['week',T('nav.week')],['pending',T('nav.pending')],['dash',T('nav.dash')],...(VIEW?[]:[['habits',T('nav.habits')]]),['notes',T('nav.notes')],['plan',T('nav.plan')],['settings',T('nav.settings')],...(ME&&ME.is_admin&&!VIEW?[['admin',T('nav.admin')]]:[])];
+const V={habits:vHabits,today:vToday,week:vWeek,pending:vPending,dash:vDash,notes:vNotes,plan:vPlan,settings:vSettings,admin:vAdmin,overall:vOverall};
 function applyTheme(){const t=SET.theme=='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):SET.theme;document.documentElement.dataset.theme=t;const b=$('#thq');if(b){b.textContent=t=='dark'?'☀':'☾';b.setAttribute('aria-label',T('a.theme'))}}
 function render(){applyTheme();document.documentElement.lang=LANG();const lq=$('#langq');lq.textContent=LANG()=='bn'?'EN':'বাং';lq.setAttribute('aria-label',T('a.lang'));
 if(!ME){document.body.classList.add('auth');$('#view').innerHTML=vLogin();$('#modal').innerHTML='';renderPomo();if(focusSel){$(focusSel)?.focus();focusSel=''}return}
-document.body.classList.remove('auth');syncCur();if(tab=='admin'&&(!ME.is_admin||VIEW))tab='dash';if(tab=='overall'&&VIEW)tab='dash';
+document.body.classList.remove('auth');syncCur();if(tab=='admin'&&(!ME.is_admin||VIEW))tab='dash';if(tab=='overall'&&VIEW)tab='dash';if(tab=='habits'&&VIEW)tab='dash';
 const pn=$('#pname');pn.textContent=VIEW?VIEW.pname:PROJ?PROJ.name:'';$('#brand').setAttribute('aria-label',T('proj.title'));
 const n=pendCount(),badge=k=>k=='pending'&&n?`<span class="n">${n}</span>`:k=='admin'&&WAITING?`<span class="n">${WAITING}</span>`:'';$('#nav').innerHTML=TABS().map(([k,l])=>`<button data-tab="${k}"${k==tab?' class="active" aria-current="page"':''}>${l}${badge(k)}</button>`).join('');
 $('#bnav').innerHTML=bnavHtml(badge);
-$('#chip').textContent=dd(cur.w,cur.d).full;const me=$('#me');me.textContent=(VIEW?VIEW.name:ME.name).trim().charAt(0).toUpperCase()||'?';me.setAttribute('aria-label',T('nav.settings'));
+$('#chip').textContent=new Date(todayISO()+'T00:00:00Z').toLocaleDateString(LANG()=='bn'?'bn-BD':'en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'UTC'});const me=$('#me');me.textContent=(VIEW?VIEW.name:ME.name).trim().charAt(0).toUpperCase()||'?';me.setAttribute('aria-label',T('nav.settings'));
 $('#view').innerHTML=(VIEW?`<div class="rob"><span>👁 ${T('ro.viewing',{n:esc(VIEW.name)})}</span><button class="mini p" data-act="exitview">← ${T('ro.back')}</button></div>`:'')+V[tab]();
-const sc=$('.mbody')?.scrollTop;$('#modal').innerHTML=closing?modalHtml():imp?impHtml():CE?ceHtml():printOpen?printHtml():projUI?(projUI.kind=='new'?projNewHtml():projUI.kind=='short'?projShortHtml():projMenuHtml()):'';if((imp||CE)&&sc)$('.mbody').scrollTop=sc;
+const sc=$('.mbody')?.scrollTop;$('#modal').innerHTML=habUI?habHtml():pauseUI?pauseHtml():closing?modalHtml():imp?impHtml():CE?ceHtml():printOpen?printHtml():projUI?(projUI.kind=='new'?projNewHtml():projUI.kind=='short'?projShortHtml():projMenuHtml()):'';if((imp||CE)&&sc)$('.mbody').scrollTop=sc;
 if(focusSel){$(focusSel)?.focus();focusSel=''}renderPomo();queueSave();queuePrefs()}
 // phone: a bottom bar with the 4 main tabs; the rest sit in a "More" sheet
 const BMAIN=['today','week','pending','dash'],BICON={today:'<path d="M4 6h16v14H4zM4 10h16M9 3v4M15 3v4"/>',week:'<path d="M4 5h16v15H4zM4 9h16M8 13h2M12 13h2M16 13h0M8 16h2M12 16h2"/>',pending:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',dash:'<path d="M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z"/>',more:'<circle cx="6" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18" cy="12" r="1.4"/>'};
@@ -62,12 +62,14 @@ if(save){const v=($('#cr')||{}).value?.trim();if(v){const i=refl.findIndex(r=>r.
 TGD[o]=tgt(o);closed[o]=1;closing=false;toast(left?T('close.doneLeft',{n:left}):T('close.doneAll'),1)}
 
 // ---------- actions ----------
-const UNDO=new Set(['parchall','wdel','sdel','arch','impgo','merge','mergesel','mergeall','closego','closeskip','wipe','tplreset','focdel','remdel']);
+const UNDO=new Set(['pzgo','pzdel','pzend','hbdel','parchall','wdel','sdel','arch','impgo','merge','mergesel','mergeall','closego','closeskip','wipe','tplreset','focdel','remdel']);
 // what an admin may still click while looking at someone else's routine
 const VIEW_OK=new Set(['exitview','wk','wkw','printopen','prr','prno','prgo','theme','themeq','lang','langq','undo']);
 async function action(a){const D=a.dataset,id=+D.id,p=P.find(x=>x.id==id);
 if(VIEW&&!VIEW_OK.has(D.act)){toast(T('ro.blocked'));return}
-if(UNDO.has(D.act))undoSnap=snap();
+if(UNDO.has(D.act)){undoSnap=snap();undoHab=''}
+if(/^hb/.test(D.act)){const hu=JSON.stringify(SET.hab);if(D.act=='hbdel')undoHab=hu;if(habAction(D))render();return}
+if(/^pz/.test(D.act)){if(pauseAction(D))render();return}
 switch(D.act){
 case'login':doLogin();return;
 case'more':moreOpen=!moreOpen;break;
@@ -140,7 +142,7 @@ if(k){const[w,d]=od(co());ensureWeeks(w);P.push({id:++uid,w,d,s:k,t,p:pp,est,ow:
 else{FOC.push({id:++fid,o:co(),t,p:pp,est,done:false,from:''});toast(T('foc.added'))}break}
 case'focdel':FOC=FOC.filter(f=>f.id!=+D.f);toast(T('foc.removed'),1);break;
 case'pin':if(inFocus(p)){pin.delete(id);nof.add(id);toast(T('foc.removed'))}else{nof.delete(id);pin.add(id);toast(T('foc.pinned'))}break;
-case'printopen':printOpen=true;PR={a:ord(cur.w,1),b:Math.min(ord(cur.w,7),planLen()),plan:true,date:true,done:true,hrs:true,notes:true};break;
+case'printopen':printOpen=true;PR={a:ord(cur.w,1),b:Math.min(ord(cur.w,7),planLen()),plan:false,date:false,done:true,hrs:true,notes:true};break;
 case'prr':PR={a:+D.a,b:+D.b,...prOpts()};break;
 case'prno':printOpen=false;break;
 case'prgo':{const L=printLen(),a1=Math.max(1,Math.min(L,+$('#pra').value||1)),b1=Math.max(a1,Math.min(L,+$('#prb').value||a1));$('#print').innerHTML=printDoc(a1,b1,prOpts());printOpen=false;render();setTimeout(()=>window.print(),50);return}
@@ -169,13 +171,13 @@ case'rfedit':rfDay={w:+D.w,d:+D.d};tab='notes';scrollTo(0,0);break;
 case'rfdel':if(!confirm(T('notes.delQ')))return;refl=refl.filter(r=>!(r.w==D.w&&r.d==D.d));break;
 case'edit':editing=id;adding=null;renaming='';focusSel='#edt';break;
 case'cancel':editing=0;bedit=0;adding=null;renaming='';break;
-case'save':{const t=$('#edt').value.trim(),[w,d]=$('#edd').value.split('.').map(Number);if(!t){toast(T('m.empty'));return}if(p.w!=w||p.d!=d)p.from=lab(p.w,p.d);p.t=t;p.s=$('#eds').value||p.s;p.p=$('#edp').value;p.est=Math.max(0,num($('#edm').value)|0);p.w=w;p.d=d;editing=0;toast(T('m.savedTick'));break}
+case'save':{const t=$('#edt').value.trim(),[w,d]=$('#edd').value.split('.').map(Number);if(!t){toast(T('m.empty'));return}if(p.w!=w||p.d!=d)p.from=lab(p.w,p.d);p.t=t;p.s=$('#eds').value||p.s;p.p=$('#edp').value;p.est=Math.max(0,num($('#edm').value)|0);p.pg=$('#edg').value.trim();p.w=w;p.d=d;editing=0;toast(T('m.savedTick'));break}
 case'arch':p.arch=true;toast(T('m.archived'),1);break;
 case'restore':p.arch=false;toast(T('m.restored'));break;
 case'addopen':adding={w:+D.w,d:+D.d,k:D.k||''};editing=0;renaming='';focusSel='#addt';break;
-case'addsave':{const t=$('#addt').value.trim(),sv=$('#adds').value;if(!sv){toast(T('tf.noSubj'));return}if(!t){toast(T('m.writeTopic'));return}P.push({id:++uid,w:adding.w,d:adding.d,s:sv,t,p:'',est:Math.max(0,num($('#addm').value)|0),ow:adding.w,od:adding.d,arch:false,from:''});adding=null;toast(T('m.added'));break}
+case'addsave':{const t=$('#addt').value.trim(),sv=$('#adds').value;if(!sv){toast(T('tf.noSubj'));return}if(!t){toast(T('m.writeTopic'));return}P.push({id:++uid,w:adding.w,d:adding.d,s:sv,t,p:'',est:Math.max(0,num($('#addm').value)|0),pg:($('#addg')||{value:''}).value.trim(),ow:adding.w,od:adding.d,arch:false,from:''});adding=null;toast(T('m.added'));break}
 case'export':dl('routine.csv',csv([H,...csvRows()]));return;
-case'template':{const sa=SUBJ[0]?sn(SUBJ[0][0]):T('subject'),sb=SUBJ[1]?sn(SUBJ[1][0]):sa;dl('routine-import-template.csv',csv([['id','day','subject','priority','minutes','subpart'],['',1,sa,'',120,T('tpl.ex1')],['',1,sb,'High',60,T('tpl.ex2')],['',2,sb,'',45,T('tpl.ex3')],['',10,sb,'','',T('tpl.ex4')]]));return}
+case'template':{const sa=SUBJ[0]?sn(SUBJ[0][0]):T('subject'),sb=SUBJ[1]?sn(SUBJ[1][0]):sa;dl('routine-import-template.csv',csv([['id','day','subject','priority','minutes','page','subpart'],['',1,sa,'',120,'12-15',T('tpl.ex1')],['',1,sb,'High',60,'',T('tpl.ex2')],['',2,sb,'',45,'',T('tpl.ex3')],['',10,sb,'','','',T('tpl.ex4')]]));return}
 case'upload':$('#csvFile').click();return;
 case'impmode':imp.mode=D.m;break;
 case'impgo':{const fromFile=!imp.kind||imp.kind=='file',w=impApply();if(w&&fromFile){wkW=w;wkSel=1;wEdit=true;tab='week';scrollTo(0,0)}break}
@@ -195,7 +197,7 @@ case'atest':alarmOn();setTimeout(alarmOff,3000);return;
 case'notif':if(SET.notif){SET.notif=false;break}if(!('Notification' in window)){toast(T('set.notifNo'));return}Notification.requestPermission().then(x=>{SET.notif=x=='granted';toast(SET.notif?T('set.notifOn'):T('set.notifDenied'));render()});return;
 case'backup':dl(`routine-backup-${todayISO()}.json`,snap(),'application/json');return;
 case'tplreset':{if(!confirm(T('set.resetQ')))return;try{const r=await api('GET','template?today='+todayISO()),keep=SET;restore(r.state);SET=keep;syncCur();BD.day=co();wkW=cur.w;wkSel=cur.d;toast(T('set.resetDone'),1)}catch(e){toast(errT(e))}break}
-case'wipe':if(!confirm(T('set.wipeQ')))return;clearInterval(PO.iv);PO={stage:'off'};P=[];done=new Set();HR={};TGD={};revs=[];refl=[];FOC=[];notes={};pin=new Set();nof=new Set();SEC={};HRC={};closed={};START=todayISO();ALL.length=0;ensureWeeks(1);syncCur();planOpen=new Set([1]);BD={day:1};tab='plan';toast(T('set.wiped'),1);break;
+case'wipe':if(!confirm(T('set.wipeQ')))return;clearInterval(PO.iv);PO={stage:'off'};P=[];done=new Set();HR={};TGD={};PAUSE=[];revs=[];refl=[];FOC=[];notes={};pin=new Set();nof=new Set();SEC={};HRC={};closed={};START=todayISO();ALL.length=0;ensureWeeks(1);syncCur();planOpen=new Set([1]);BD={day:1};tab='plan';toast(T('set.wiped'),1);break;
 // ---- timer
 case'pomo':pomoOpen(D.f?{f:+D.f}:{p:id});break;
 case'pdur':PO.dur=+D.v;break;
@@ -223,7 +225,7 @@ case'ttest':tickTest();return;
 case'btest':bgTest();return;
 case'pnative':if(PO.zen)zenOff();else{PO.zen=true;PO.fs=true;document.documentElement.requestFullscreen?.().catch(()=>{})}break;
 case'pdone':{const r=PO.ref;if(r.f){const x=pref(r);if(x)x.done=!x.done}else done.has(r.p)?done.delete(r.p):done.add(r.p);break}
-case'undo':if(undoSnap){const keep=[SET,SEC,HRC];restore(undoSnap);[SET,SEC,HRC]=keep;undoSnap=null;imp=null;closing=false;syncCur();wkW=cur.w;toast(T('undone'))}break;
+case'undo':if(undoSnap){const keep=[SET,SEC,HRC];restore(undoSnap);[SET,SEC,HRC]=keep;if(undoHab){SET.hab=JSON.parse(undoHab);undoHab=''}undoSnap=null;imp=null;closing=false;syncCur();wkW=cur.w;toast(T('undone'))}break;
 case'build':tab='plan';scrollTo(0,0);break;
 case'tfadd':{const o=+D.o,pre=D.pre,k=$('#'+pre+'s').value,t=$('#'+pre+'t').value.trim(),pp=$('#'+pre+'p').value;focusSel='#'+pre+'t';if(!t){toast(T('m.writeTopic'));break}
 const[w,d]=od(o);ensureWeeks(w);const mn=$('#'+pre+'m');P.push({id:++uid,w,d,s:k,t,p:pp,est:mn?Math.max(0,num(mn.value)|0):0,ow:w,od:d,arch:false,from:''});TF={s:k,p:pp};planOpen.add(w);toast(T('tf.added',{s:sn(k,w),d:lab(w,d)}));break}
@@ -243,13 +245,14 @@ else{const c=revs.find(x=>x.id==r.child);if(c&&!c.done)revs=revs.filter(x=>x!=c)
 const c=e.target.closest('.check');if(c){const i=+c.dataset.id;done.has(i)?done.delete(i):done.add(i);focusSel=`.check[data-id="${i}"]`;render();return}
 const a=e.target.closest('[data-act]');if(a)action(a)});
 document.addEventListener('keydown',e=>{if(PO.stage!='off'&&PO.fs&&!VIEW){if(e.key=='Escape'){e.preventDefault();$(PO.zen?'#pomo [data-act=pnative]':'#pomo [data-act=pmin]')?.click();return}if(PO.zen)zenWake();if(e.key==' '&&!/INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName)){e.preventDefault();$('#pomo [data-act=ppause],#pomo [data-act=presume]')?.click();return}}
-if(e.key=='Escape'&&(closing||imp||CE||printOpen||projUI)){closing=false;if(imp)imp=null;else CE=null;printOpen=false;projUI=null;render();return}if(e.key!='Enter')return;const i=e.target.id;
-const K={shd:'shortprev',shn:'shortmake',prn:'projrensave',pnn:'projcreate',lphone:'login',lname:'login',lpin:'login',lpin2:'login',opin:'pinsave',npin:'pinsave',npin2:'pinsave',rnm:'rnsave',edt:'save',edd:'save',eds:'save',edp:'save',addt:'addsave',rM:'remadd',snew:'sadd',qat:'qsave',fadd:'focadd',fam:'focadd',anm:'aadd',aph:'aadd',psq:'psearch',padd:'paddgo'}[i];
+if(e.key=='Escape'&&(closing||imp||CE||printOpen||projUI||pauseUI||habUI)){closing=false;if(imp)imp=null;else CE=null;printOpen=false;projUI=null;pauseUI=null;habUI=null;render();return}if(e.key!='Enter')return;const i=e.target.id;
+const K={shd:'shortprev',shn:'shortmake',prn:'projrensave',pnn:'projcreate',lphone:'login',lname:'login',lpin:'login',lpin2:'login',opin:'pinsave',npin:'pinsave',npin2:'pinsave',rnm:'rnsave',edt:'save',edg:'save',addg:'addsave',edd:'save',eds:'save',edp:'save',addt:'addsave',rM:'remadd',snew:'sadd',qat:'qsave',fadd:'focadd',fam:'focadd',anm:'aadd',aph:'aadd',psq:'psearch',padd:'paddgo',pzn:'pzgo',pzw:'pzgo',hbn:'hbsave',hbc:'hbsave',hbm:'hbsave',hbw:'hbsave',hbg:'hbsave'}[i];
 if(K){$(`[data-act=${K}]`)?.click();return}
 if(i=='tft'||i=='tfm'){$(`[data-act=tfadd][data-pre="${i.slice(0,2)}"]`).click();return}});
 document.addEventListener('change',e=>{const tg=e.target;if(VIEW&&(tg.dataset.rvo||tg.dataset.tgt!==undefined||tg.dataset.set||tg.dataset.setv||tg.dataset.smin||tg.id=='startDate'||tg.id=='csvFile'||tg.dataset.ce)){toast(T('ro.blocked'));render();return}
 const k=tg.dataset.imp;if(k){imp.off.has(k)?imp.off.delete(k):imp.off.add(k);focusSel=`[data-imp="${k}"]`;render();return}
 if(tg.dataset.tgt!==undefined){for(let o=1;o<co();o++)if(TGD[o]==null)TGD[o]=TG;TG=+tg.value;toast(T('set.targetT',{n:TG}));render();return}
+if(/^pz[an]$/.test(tg.id)){pzRead();render();return}
 if(tg.id=='startDate'&&tg.value){START=tg.value;syncCur();wkW=cur.w;wkSel=cur.d;BD.day=co();render();return}
 if(/^tf[sp]$/.test(tg.id)){TF[tg.id[2]]=tg.value;return}
 if(tg.id=='fos'||tg.id=='fap'){FF[tg.id=='fos'?'s':'p']=tg.value;return}

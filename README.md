@@ -13,6 +13,18 @@ A new project can also start from the **BCS 2-month routine** (`templates/bcs-2-
 to a project; language, theme, timer and sound settings belong to the account. *Overall* shows every
 project at a glance.
 
+**Pause** (*Today* or *Routine* page, ⏸): take some calendar days off - ill, travelling, an exam. Paused dates get no
+Day number, so nothing on them turns pending, the study streak skips them, and every later day (topics, revisions)
+moves forward by the length of the pause. A pause can start today, later, or in the past (logged study moves with its
+date; a date with study logged can't be paused). *Start again now* ends a running pause early. Undo works.
+
+**Habits** tab: small daily habits you want to build (meditation, exercise, sleep on time...). Each habit has a name,
+a challenge length (21/30/66 days...), which weekdays, a cue (*after Fajr*), an optional reminder time, a smallest
+version for bad days (*just 2 minutes*, ticked as ½) and a why. Tick it on the Habits tab, on *Today* or the
+Dashboard; see the current and best streak, how often it was done, and a grid of the challenge days (tap a day to fix
+it). A rest day doesn't break the streak; "missed yesterday" warns you not to miss twice. Habits belong to the account
+(every project shows them), keep going during a routine pause, and print with the routine.
+
 **CSV upload** opens a table editor first: fix day, subject (dropdown), topic and priority; new subject
 names are listed so you can create them or map them onto an existing subject; then review and apply.
 Both the week-block format (like the BCS file) and the flat `day,subject,priority,subpart` format work.
@@ -132,7 +144,7 @@ server.py            web server + API + SQLite (stdlib only)
 wsgi.py              entry point for WSGI hosts
 compress.py          "Make shorter": squeeze a routine into fewer days
 templates/           routine CSVs (4-month = new users' default, 2-month made from it)
-tools/               make_short_routine.py: write a shorter routine CSV from a longer one
+tools/               make_short_routine.py (shorter routine CSV), fill_pages.py (pages into old routines)
 static/              the app (index.html, app.css, i18n.js, core.js, views.js, features.js, main.js, icons)
 launcher/            desktop launcher, stop script, desktop-icon installer
 ```
@@ -143,5 +155,15 @@ The template is the week-block layout: a row `সপ্তাহ N (মাস M)
 the subjects, then `Day 1`…`Day 7` rows. A week title may join two subjects with ` + `
 (`সাধারণ বিজ্ঞান + তথ্য ও যোগাযোগ প্রযুক্তি (ICT)`): the first is the week's own subject (first column),
 the other gets its own column named in that week's `Day,…` row. In a cell, `|` separates topics and a trailing `[High]`,
-`[Medium]` or `[Low]` sets the priority. Inside the app, *Routine → Upload CSV* takes the simple flat
-format instead (`day,subject,priority,subpart`; *Template* downloads an example).
+`[Medium]` or `[Low]` sets the priority, and a trailing `{পৃ. ৪১৩–৪৩০}` (or `{p. 413-430}`) the book pages.
+Inside the app, *Routine → Upload CSV* takes the simple flat format instead
+(`day,subject,priority,minutes,page,subpart`; *Template* downloads an example).
+
+**Book pages:** every topic can carry its Prelims Blueprint pages (shown as 📖 on Today, Dashboard and
+Routine, editable by hand there and in the CSV table). Both templates come with pages filled in.
+To copy them into routines that already exist (only topics without a page are touched):
+
+```bash
+python3 tools/fill_pages.py            # shows what would change
+python3 tools/fill_pages.py --apply    # writes data/routine.db (copy it first)
+```

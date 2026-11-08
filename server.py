@@ -131,6 +131,7 @@ def server_today():
 
 # ---------------------------------------------------------------- routine template (CSV -> state)
 PRIORITY = re.compile(r"\s*\[(high|medium|low)\]\s*$", re.I)
+PAGE = re.compile(r"\s*\{\s*(?:পৃ|p|pg|page)\.?\s*([^{}]*?)\s*\}\s*$", re.I)
 WEEK_ROW = re.compile(r"^\s*(?:সপ্তাহ|week)\s*[0-9০-৯]+", re.I)
 DAY_ROW = re.compile(r"^\s*day\s*([0-9০-৯]+)\s*$", re.I)
 BN_DIGITS = str.maketrans("০১২৩৪৫৬৭৮৯", "0123456789")
@@ -141,7 +142,7 @@ def parse_template(text):
     header row naming the columns, then "Day 1..7" rows. The first column holds the week's
     own subject (the part of the week title before " - "); the other columns are subjects
     named by the header. A cell may hold several topics separated by "|"; a trailing
-    "[High]" / "[Medium]" / "[Low]" is the priority."""
+    "[High]" / "[Medium]" / "[Low]" is the priority, and a trailing "{পৃ. 12-15}" the book pages."""
     rows = list(csv.reader(io.StringIO(text.lstrip("﻿"))))
     name, wt, tasks = "", {}, []
     keys, week_subj, col_keys = {}, {}, []   # subject name -> key, week -> key
@@ -190,11 +191,14 @@ def parse_template(text):
                     part = part.strip()
                     if not part:
                         continue
+                    gm = PAGE.search(part)
+                    part = PAGE.sub("", part)
                     pm = PRIORITY.search(part)
                     tasks.append({
                         "id": len(tasks) + 1, "w": week, "d": d, "s": s,
                         "t": PRIORITY.sub("", part).strip(),
                         "p": pm.group(1).capitalize() if pm else "",
+                        "pg": gm.group(1) if gm else "",
                         "ow": week, "od": d, "arch": False, "from": "",
                     })
             continue
@@ -235,7 +239,18 @@ def summarize(st, today=None):
         start = dt.date.fromisoformat(st.get("START") or "")
     except ValueError:
         start = today
-    co = max(1, (today - start).days + 1)
+    # paused dates (st["PAUSE"]) get no Day number: Day N counts only the dates that are not paused
+    paused, now_paused = 0, False
+    for pz in st.get("PAUSE") or []:
+        try:
+            a, n = dt.date.fromisoformat(pz["a"]), int(pz["n"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        lo, hi = max(a, start), min(a + dt.timedelta(days=n), today)
+        if hi > lo:
+            paused += (hi - lo).days
+        now_paused = now_paused or a <= today < a + dt.timedelta(days=n)
+    co = max(1, (today - start).days + 1 - paused)
     ordf = lambda p: (p["w"] - 1) * 7 + p["d"]
     tasks = [p for p in st.get("P", []) if not p.get("arch")]
     done = set(st.get("done", []))
@@ -261,6 +276,7 @@ def summarize(st, today=None):
     est = lambda p: p.get("est") or smin.get(p["s"], 0) or 0
     return {
         "day": co, "started": (today - start).days >= 0, "start": start.isoformat(),
+        "paused": now_paused and (today - start).days >= 0,
         "plan_len": max([co] + [ordf(p) for p in tasks]),
         "overall": pct(tasks), "on_track": pct(upto),
         "done": sum(1 for p in tasks if p["id"] in done), "total": len(tasks),

@@ -6,8 +6,8 @@ const pad=n=>String(n).padStart(2,'0'),clone=o=>JSON.parse(JSON.stringify(o));
 
 // ---------- the user's routine (one JSON document, saved on the server) ----------
 const SUBJ=[],SNAME={},WT={},ALL=[];
-let SMIN={},FGD={},P=[],uid=0,done=new Set(),START='',notes={},TG=10,TGD={},HR={},revs=[],rid=0,LAD=[1,3,7,14,30],refl=[],R=[],RM=[],FOC=[],fid=0,pin=new Set(),nof=new Set(),SEC={},HRC={},PNAME='',closed={};
-const SET0={lang:'en',notif:false,theme:'system',pomo:{focus:25,short:5,long:15,every:4,auto:false,autoHour:true,font:'roboto',ms:'0',color:'teal'},snd:{on:true,hour:true,vol:.6},fg:{on:true,grace:10,mode:'pause',alert:'alarm',blur:true,strict:false,strictMin:2,search:3,searchOn:true},tick:{on:false,style:'classic',vol:.4,when:'both'},bg:{on:false,kind:'rain',vol:.3,when:'both'}};
+let SMIN={},FGD={},P=[],uid=0,done=new Set(),START='',notes={},TG=10,TGD={},HR={},revs=[],rid=0,LAD=[1,3,7,14,30],refl=[],R=[],RM=[],FOC=[],fid=0,pin=new Set(),nof=new Set(),SEC={},HRC={},PNAME='',closed={},PAUSE=[];
+const SET0={lang:'en',notif:false,theme:'system',pomo:{focus:25,short:5,long:15,every:4,auto:false,autoHour:true,font:'roboto',ms:'0',color:'teal'},snd:{on:true,hour:true,vol:.6},fg:{on:true,grace:10,mode:'pause',alert:'alarm',blur:true,strict:false,strictMin:2,search:3,searchOn:true},tick:{on:false,style:'classic',vol:.4,when:'both'},bg:{on:false,kind:'rain',vol:.3,when:'both'},hab:{list:[],log:{},nid:0}};
 let SET=clone(SET0);
 
 // ---------- screen state ----------
@@ -15,7 +15,7 @@ let tab='dash',cur={w:1,d:1},wkW=1,wkSel=1,rfDay={w:1,d:1},noteOpen=0,editing=0,
   printOpen=false,PR={},planOpen=new Set([1]),undoSnap=null,BD={day:1},TF={s:'',p:''},bedit=0,focusSel='',closeDraft=null,imp=null;
 // account
 const TKEY='routine-token',LKEY='routine-lang';
-let ME=null,TOKEN=null,REV=0,lastSaved='',saveTimer=0,LG={mode:'login',phone:'',name:'',err:''},WAITING=0,moreOpen=false,SESS=null,ADM=null,VIEW=null,OWN=null;
+let ME=null,TOKEN=null,REV=0,lastSaved='',saveTimer=0,LG={mode:'login',phone:'',name:'',err:''},WAITING=0,moreOpen=false,SESS=null,ADM=null,VIEW=null,OWN=null,undoHab='';
 // projects: PROJ = the open one, PROJS = list with server summaries; Settings (SET) belong to the user, not a project
 let PROJ=null,PROJS=[],projUI=null,OV=null,CE=null,lastPrefs='',prefTimer=0,FOLD={},FF={s:'',p:''};
 try{TOKEN=localStorage.getItem(TKEY)}catch(e){}
@@ -34,7 +34,19 @@ const isoOf=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const todayISO=()=>TODAY_Q||isoOf(new Date());
 const dayDiff=(a,b)=>Math.round((Date.parse(b+'T00:00:00Z')-Date.parse(a+'T00:00:00Z'))/864e5);
 const started=()=>dayDiff(START,todayISO())>=0;
-const co=()=>Math.max(1,dayDiff(START,todayISO())+1);
+// ---------- pause: calendar days taken off the routine ----------
+// PAUSE = [{id,a:'YYYY-MM-DD',n:days,why}]. A paused date gets no Day number, so every later day (topics,
+// revisions) moves forward by itself; nothing turns pending and the study streak skips those dates.
+const isoAdd=(iso,k)=>new Date(Date.parse(iso+'T00:00:00Z')+k*864e5).toISOString().slice(0,10);
+const pauseEnd=p=>isoAdd(p.a,p.n-1);
+const pauseAt=(iso,L=PAUSE)=>L.find(p=>iso>=p.a&&iso<=pauseEnd(p));
+// paused dates from START up to, not including, iso
+function pausedBefore(iso,L=PAUSE){let n=0;for(const p of L){const s=p.a<START?START:p.a,e=isoAdd(p.a,p.n),hi=e<iso?e:iso;if(hi>s)n+=dayDiff(s,hi)}return n}
+// Day number of a date (a paused date gives the Day that comes next), and the date of a Day
+const oOfIso=(iso,L=PAUSE)=>dayDiff(START,iso)+1-pausedBefore(iso,L);
+function isoOfO(o,L=PAUSE){let d=isoAdd(START,o-1);for(let i=0;i<60;i++){const nd=isoAdd(START,o-1+pausedBefore(isoAdd(d,1),L));if(nd==d&&!pauseAt(d,L))break;d=nd}return d}
+const pausedToday=()=>started()&&!!pauseAt(todayISO());
+const co=()=>Math.max(1,oOfIso(todayISO()));
 // last day that has a topic (the routine's own length, without today)
 const routineLen=()=>Math.max(1,...P.filter(p=>!p.arch).map(p=>ord(p.w,p.d)));
 const planLen=()=>Math.max(co(),...P.filter(p=>!p.arch).map(p=>ord(p.w,p.d)));
@@ -42,7 +54,7 @@ const planLen=()=>Math.max(co(),...P.filter(p=>!p.arch).map(p=>ord(p.w,p.d)));
 const openRevs=()=>revs.filter(r=>!r.done&&P.some(p=>p.id==r.pid&&!p.arch));
 // days you can move work to: the routine's days from today on, and at least the next two weeks
 const daysFrom=from=>{const out=[],last=Math.max(ALL.length,co()+13);for(let o=Math.max(1,from);o<=last;o++)out.push(od(o));return out};
-function dd(w,d){const s=new Date(Date.parse(START+'T00:00:00Z')+(ord(w,d)-1)*864e5);
+function dd(w,d){const s=new Date(Date.parse(isoOfO(ord(w,d))+'T00:00:00Z'));
 return{iso:s.toISOString().slice(0,10),dow:DOWS()[s.getUTCDay()],day:pad(s.getUTCDate()),mon:MONS()[s.getUTCMonth()],
 full:s.toLocaleDateString(LANG()=='bn'?'bn-BD':'en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'UTC'})}}
 function ensureWeeks(n){while(ALL.length/7<n){const w=ALL.length/7+1;for(let d=1;d<=7;d++)ALL.push([w,d])}}
@@ -78,16 +90,16 @@ const mmss=ms=>{const t=Math.max(0,Math.ceil(ms/1000));return `${pad(Math.floor(
 const hm=sec=>{const m=Math.floor((sec||0)/60);return m>=60?T('t.hm',{h:Math.floor(m/60),m:pad(m%60)}):T('t.min',{m})};
 
 // ---------- whole-state snapshot: saved to the server, also used for Undo ----------
-function snapObj(){return{v:3,PNAME,P,uid,done:[...done],START,notes,TG,TGD,HR,revs,rid,LAD,refl,R,RM,FOC,fid,pin:[...pin],nof:[...nof],SUBJ,SNAME,WT,nw:ALL.length/7,SEC,HRC,closed,FGD,SMIN}}
+function snapObj(){return{v:3,PNAME,P,uid,done:[...done],START,notes,TG,TGD,HR,revs,rid,LAD,refl,R,RM,FOC,fid,pin:[...pin],nof:[...nof],SUBJ,SNAME,WT,nw:ALL.length/7,SEC,HRC,closed,FGD,SMIN,PAUSE}}
 const snap=()=>JSON.stringify(snapObj());
 function restore(j){const o=typeof j=='string'?JSON.parse(j):j;
 PNAME=o.PNAME||'';P=o.P||[];uid=o.uid||P.reduce((a,p)=>Math.max(a,p.id),0);done=new Set(o.done||[]);START=o.START||todayISO();notes=o.notes||{};TG=o.TG||10;TGD=o.TGD||{};HR=o.HR||{};
-revs=o.revs||[];rid=o.rid||0;LAD=o.LAD||[1,3,7,14,30];refl=o.refl||[];R=o.R||[];RM=o.RM||[];FOC=o.FOC||[];fid=o.fid||0;pin=new Set(o.pin||[]);nof=new Set(o.nof||[]);SEC=o.SEC||{};HRC=o.HRC||{};closed=o.closed||{};FGD=o.FGD||{};
+revs=o.revs||[];rid=o.rid||0;LAD=o.LAD||[1,3,7,14,30];refl=o.refl||[];R=o.R||[];RM=o.RM||[];FOC=o.FOC||[];fid=o.fid||0;pin=new Set(o.pin||[]);nof=new Set(o.nof||[]);SEC=o.SEC||{};HRC=o.HRC||{};closed=o.closed||{};FGD=o.FGD||{};PAUSE=o.PAUSE||[];
 SUBJ.splice(0,SUBJ.length,...(o.SUBJ||[]));for(const k in SNAME)delete SNAME[k];Object.assign(SNAME,o.SNAME||{});for(const k in WT)delete WT[k];Object.assign(WT,o.WT||{});
 ALL.length=0;ensureWeeks(Math.max(1,o.nw||1));const mm=migrateMain();
 // weeks are never dropped on load: an empty week may be one the user added on purpose (✕ on its card removes it)
 if(!o.SMIN){SMIN=defaultSMIN();return true}SMIN=o.SMIN;return mm}
-const mergeSet=st=>{st=st||{};return{...SET0,...st,pomo:{...SET0.pomo,...st.pomo},snd:{...SET0.snd,...st.snd},fg:{...SET0.fg,...st.fg},tick:{...SET0.tick,...st.tick},bg:{...SET0.bg,...st.bg,...(st.bg&&st.bg.kind=='white'?{kind:'rain'}:{})}}};
+const mergeSet=st=>{st=st||{};return{...SET0,...st,pomo:{...SET0.pomo,...st.pomo},snd:{...SET0.snd,...st.snd},fg:{...SET0.fg,...st.fg},tick:{...SET0.tick,...st.tick},bg:{...SET0.bg,...st.bg,...(st.bg&&st.bg.kind=='white'?{kind:'rain'}:{})},hab:st.hab&&Array.isArray(st.hab.list)?st.hab:{list:[],log:{},nid:0}}};
 // older routines had one "main" subject whose name changed by week: give those topics real subjects
 function migrateMain(){if(!SUBJ.some(s=>s[0]=='main')&&!P.some(p=>p.s=='main'))return false;const before=new Set(SUBJ.map(s=>s[0]));
 P.forEach(p=>{if(p.s=='main'){const n=String(WT[p.w]||T('subj.main')).split(' - ')[0].trim();p.s=getSubj(n)}});
@@ -115,6 +127,7 @@ function queuePrefs(){if(!ME||VIEW)return;const s=JSON.stringify(SET);if(s==last
 function toast(m,u){const t=$('#toast'),ok=u&&undoSnap&&!VIEW;t.innerHTML=esc(m)+(ok?`<button class="tundo" data-act="undo">${T('undo')}</button>`:'');t.classList.toggle('act',!!ok);t.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>{t.classList.remove('on','act')},ok?7000:2600)}
 const hd=(ey,h,sub,btn)=>`<div class="headrow"><div><div class="eyebrow">${ey}</div><h1>${h}</h1><p class="subtitle">${sub}</p></div>${btn||''}</div>`;
 const panel=(t,d,r,body)=>`<section class="panel"><div class="panelhead"><div><h2>${t}</h2><p class="paneldesc">${d}</p></div>${r||''}</div>${body}</section>`;
+const pgt=p=>p.pg?`<span class="tag pgtag" title="${T('pg.col')}">📖 ${T('pg')} ${esc(p.pg)}</span>`:'';
 const pr=p=>p=='High'?`<span class="priority">${T('pri.high')}</span>`:p?`<span class="tag">${T('pri.'+p.toLowerCase())}</span>`:'';
 const priOpts=sel=>['','High','Medium','Low'].map(v=>`<option value="${v}"${sel==v?' selected':''}>${v?T('pri.'+v.toLowerCase()):T('pri.none')}</option>`).join('');
 const dayOpts=sel=>ALL.map(([w,d])=>`<option value="${w}.${d}"${sel==w+'.'+d?' selected':''}>${labf(w,d)}</option>`).join('');

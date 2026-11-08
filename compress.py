@@ -192,7 +192,7 @@ def to_week_csv(st, title, column_subjects):
         for d in range(1, 8):
             row = ["Day %d" % d]
             for s in cols:
-                cell = [p["t"] + (" [%s]" % p["p"] if p.get("p") else "") for p in wk if p["d"] == d and p["s"] == s]
+                cell = [p["t"] + (" [%s]" % p["p"] if p.get("p") else "") + (" {পৃ. %s}" % p["pg"] if p.get("pg") else "") for p in wk if p["d"] == d and p["s"] == s]
                 row.append(" | ".join(cell))
             wr.writerow(row)
     return buf.getvalue()

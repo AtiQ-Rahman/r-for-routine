@@ -13,10 +13,11 @@ const prOpts=()=>({plan:$('#prpl').checked,date:$('#prdt').checked,done:$('#prd'
 function printDoc(a,b,o){const A=dd(...od(a)),B=dd(...od(b)),bx=x=>`<span class="bx">${x?'✓':''}</span>`,blank=`<span class="pr-mb"></span><small class="pr-u">${T('pr.m')}</small>`;
 let h=`<div class="pr-head"><b>${esc(PROJ?PROJ.name:T('pr.routine'))}</b><span>${T('days.range',{a,b})}${o.date?` · ${A.day} ${A.mon} – ${B.day} ${B.mon}`:''}</span></div>`;
 for(let n=a;n<=b;n++){const[w,d]=od(n),x=dd(w,d),ps=P.filter(p=>!p.arch&&p.w==w&&p.d==d),rv=revsOn(n).filter(r=>P.some(p=>p.id==r.pid&&!p.arch)),own=FOC.filter(f=>f.o==n),hs=hrs(n);
-let rows=SUBJ.map(([k])=>{const s=ps.filter(p=>p.s==k);return s.length?`<tr><th>${esc(sn(k,w))}</th><td>${s.map(p=>`<div class="pr-it">${bx(o.done&&done.has(p.id))}<span>${esc(p.t)}${p.p=='High'?` <i>(${T('pri.high')})</i>`:''}${o.plan&&estOf(p)?` <i>· ${fmtM(estOf(p))}</i>`:''}</span>${o.plan?'':blank}</div>`).join('')}</td></tr>`:''}).join('');
-if(rv.length)rows=`<tr><th>${T('rev.title')}</th><td>${rv.map(r=>`<div class="pr-it">${bx(o.done&&r.done)}<span>${esc(P.find(p=>p.id==r.pid).t)}</span></div>`).join('')}</td></tr>`+rows;
+let rows=SUBJ.map(([k])=>{const s=ps.filter(p=>p.s==k);return s.length?`<tr><th>${esc(sn(k,w))}</th><td>${s.map(p=>`<div class="pr-it">${bx(o.done&&done.has(p.id))}<span>${esc(p.t)}${p.pg?` <i>· ${T('pg.col')} ${esc(p.pg)}</i>`:''}${p.p=='High'?` <i>(${T('pri.high')})</i>`:''}${o.plan&&estOf(p)?` <i>· ${fmtM(estOf(p))}</i>`:''}</span>${o.plan?'':blank}</div>`).join('')}</td></tr>`:''}).join('');
+if(rv.length)rows=`<tr><th>${T('rev.title')}</th><td>${rv.map(r=>`<div class="pr-it">${bx(o.done&&r.done)}<span>${(q=>esc(q.t)+(q.pg?` <i>· ${T('pg.col')} ${esc(q.pg)}</i>`:''))(P.find(p=>p.id==r.pid))}</span></div>`).join('')}</td></tr>`+rows;
 if(own.length)rows+=`<tr><th>${T('foc.own')}</th><td>${own.map(f=>`<div class="pr-it">${bx(o.done&&f.done)}<span>${esc(f.t)}${f.p=='High'?` <i>(${T('pri.high')})</i>`:''}${o.plan&&f.est?` <i>· ${fmtM(f.est)}</i>`:''}</span>${o.plan?'':blank}</div>`).join('')}</td></tr>`;
 if(o.hrs)rows+=`<tr><th>${T('hr.title')}</th><td><div class="pr-hrs">${Array.from({length:12},(_,i)=>`<span>${o.done&&i<hs?'✕':i+1}</span>`).join('')}</div></td></tr>`;
+{const hb=habsOn(x.iso);if(hb.length)rows+=`<tr><th>${T('hb.title')}</th><td>${hb.map(h=>`<div class="pr-it">${bx(o.done&&hOk(hVal(h,x.iso)))}<span>${esc((h.icon?h.icon+' ':'')+h.name)}${h.mini?` <i>· ½ ${esc(h.mini)}</i>`:''}</span></div>`).join('')}</td></tr>`}
 if(o.notes)rows+=`<tr><th>${T('note')}</th><td class="pr-note"></td></tr>`;
 h+=`<section class="pr-day"><div class="pr-dh"><b>${lab(w,d)}</b><span>${wd(w,d)}${o.date?` · ${x.dow} ${x.day} ${x.mon}`:''}</span><span class="r">${T('n.topics',{n:ps.length})} · ${o.plan?T('pr.planIs',{t:fmtM(planMin(n))}):`${T('pl.plan')}: <span class="pr-box"></span> ${T('pr.h')}`}</span></div><table>${rows||`<tr><td>${T('nothing')}</td></tr>`}</table></section>`}
 return h}
@@ -183,8 +184,8 @@ const focusPct=(a,b)=>{let f=0,w=0,n=0,br=0;for(let o=a;o<=b;o++){f+=SEC[o]||0;c
 function merge(g,to){const[tw,td]=to.split('.').map(Number);ensureWeeks(tw);const ps=pendingList().filter(p=>p.ow+'.'+p.od==g);ps.forEach(p=>{p.w=tw;p.d=td;p.from=lab(p.ow,p.od)});toast(T('pend.moved',{n:ps.length,d:lab(tw,td)}),1)}
 
 // ---------- CSV export / import (review popup before anything changes) ----------
-const H=['id','day','week_day','date','subject','priority','minutes','subpart'];
-const csvRows=()=>P.filter(p=>!p.arch).sort((a,b)=>ord(a.w,a.d)-ord(b.w,b.d)||SUBJ.findIndex(s=>s[0]==a.s)-SUBJ.findIndex(s=>s[0]==b.s)).map(p=>[p.id,ord(p.w,p.d),wd(p.w,p.d),dd(p.w,p.d).iso,sn(p.s,p.w),p.p,p.est||'',p.t]);
+const H=['id','day','week_day','date','subject','priority','minutes','page','subpart'];
+const csvRows=()=>P.filter(p=>!p.arch).sort((a,b)=>ord(a.w,a.d)-ord(b.w,b.d)||SUBJ.findIndex(s=>s[0]==a.s)-SUBJ.findIndex(s=>s[0]==b.s)).map(p=>[p.id,ord(p.w,p.d),wd(p.w,p.d),dd(p.w,p.d).iso,sn(p.s,p.w),p.p,p.est||'',p.pg||'',p.t]);
 const csv=r=>r.map(x=>x.map(v=>/[",\n]/.test(v)?'"'+String(v).replace(/"/g,'""')+'"':v).join(',')).join('\n');
 const MODES=()=>[['file',T('imp.mFile'),T('imp.mFileD')],['all',T('imp.mAll'),T('imp.mAllD')],['append',T('imp.mAppend'),T('imp.mAppendD')]];
 const num=v=>+String(v).trim().replace(/[০-৯]/g,c=>'০১২৩৪৫৬৭৮৯'.indexOf(c));
@@ -195,8 +196,9 @@ if(f||row.length){row.push(f);rows.push(row)}return rows}
 // ---------- CSV editor: every upload first opens as an editable table ----------
 // reads both the week-block routine (like the BCS file) and the flat day,subject,priority,subpart file
 const PRI_TAG=/\s*\[(high|medium|low)\]\s*$/i,cap=x=>x.charAt(0).toUpperCase()+x.slice(1).toLowerCase();
-// trailing "[High]" and "[45m]" tags in a week-block cell, in any order
-function tags(part){let text=part,pri='',est='',m;for(let i=0;i<3;i++){if((m=text.match(PRI_TAG))){pri=cap(m[1]);text=text.replace(PRI_TAG,'')}else if((m=text.match(/\s*\[(\d+)\s*m(?:in)?\]\s*$/i))){est=+m[1];text=text.replace(m[0],'')}}return{text:text.trim(),pri,est}}
+// trailing "[High]", "[45m]" and "{পৃ. 12-15}" (book pages) tags in a week-block cell, in any order
+const PG_TAG=/\s*\{\s*(?:পৃ|p|pg|page)\.?\s*([^{}]*?)\s*\}\s*$/i;
+function tags(part){let text=part,pri='',est='',pg='',m;for(let i=0;i<4;i++){if((m=text.match(PRI_TAG))){pri=cap(m[1]);text=text.replace(PRI_TAG,'')}else if((m=text.match(/\s*\[(\d+)\s*m(?:in)?\]\s*$/i))){est=+m[1];text=text.replace(m[0],'')}else if((m=text.match(PG_TAG))){pg=m[1];text=text.replace(m[0],'')}}return{text:text.trim(),pri,est,pg}}
 function csvToRows(text){const rows=parseCSV(text).map(r=>r.map(c=>String(c||'').trim())),isWeek=c=>/^(সপ্তাহ|week)\s*[0-9০-৯]+/i.test(c||'');
 if(rows.some(r=>isWeek(r[0]))&&rows.some(r=>/^day$/i.test(r[0]||''))){const out=[];let week=0,cols=null,title='',ws='';
 rows.forEach(r=>{const first=r[0]||'';if(!r.some(Boolean))return;
@@ -204,36 +206,36 @@ if(isWeek(first)){week++;const full=r.filter(Boolean).join(', ');title=full.incl
 if(/^day$/i.test(first)){cols=r.slice(1).filter(Boolean);return}
 const m=first.match(/^day\s*([0-9০-৯]+)$/i);if(!m||!cols||!week)return;const d=num(m[1]);
 r.slice(1,1+cols.length).forEach((cell,ci)=>cell.split('|').map(x=>x.trim()).filter(Boolean).forEach(part=>{const t=tags(part);
-out.push({id:0,day:(week-1)*7+d,subj:ci==0?ws:cols[ci],pri:t.pri,perr:'',est:t.est,topic:t.text,wt:title})}))});
+out.push({id:0,day:(week-1)*7+d,subj:ci==0?ws:cols[ci],pri:t.pri,perr:'',est:t.est,pg:t.pg,topic:t.text,wt:title})}))});
 return{rows:out}}
 const head=(rows.shift()||[]).map(h=>h.toLowerCase()),ix=k=>head.indexOf(k),wk=ix('week')>=0,g=(r,k)=>ix(k)<0?'':(r[ix(k)]||'');
 const miss=['day','subject','subpart'].filter(k=>ix(k)<0);if(miss.length)return{err:T('imp.eHeader',{c:miss.join(', ')})};
 return{rows:rows.filter(r=>r.some(Boolean)).map(r=>{const dn=num(g(r,'day')),wv=num(g(r,'week')),p0=g(r,'priority'),pv=['High','Medium','Low'].find(x=>x.toLowerCase()==p0.toLowerCase());
-const mv=g(r,'minutes')||g(r,'min');return{id:num(g(r,'id'))||0,day:wk?(Number.isInteger(wv)&&Number.isInteger(dn)&&dn<=7?(wv-1)*7+dn:NaN):dn,subj:g(r,'subject'),pri:pv||'',perr:p0&&!pv?p0:'',est:mv===''?'':num(mv),estRaw:mv,topic:g(r,'subpart'),wt:g(r,'week_title')}})}}
+const mv=g(r,'minutes')||g(r,'min');return{id:num(g(r,'id'))||0,day:wk?(Number.isInteger(wv)&&Number.isInteger(dn)&&dn<=7?(wv-1)*7+dn:NaN):dn,subj:g(r,'subject'),pri:pv||'',perr:p0&&!pv?p0:'',est:mv===''?'':num(mv),estRaw:mv,pg:g(r,'page')||g(r,'pages'),topic:g(r,'subpart'),wt:g(r,'week_title')}})}}
 function openCE(name,text,o){const r=csvToRows(text);if(r.err){toast(r.err);return}
 CE={kind:'file',name,mode:(o&&o.mode)||'file',week:'all',only:false,rows:r.rows.map(x=>{const k=subjKey(x.subj);return{...x,s:k?'k:'+k:'n:'+x.subj}})}}
 // the same table for a week of the routine (rows keep their id, removed rows get archived) or for new topics
-function openCETasks(kind,w){const one=(day,s)=>({id:0,day,s:s||(TF.s?'k:'+TF.s:SUBJ[0]?'k:'+SUBJ[0][0]:'n:'),pri:'',perr:'',est:'',topic:'',wt:''});
+function openCETasks(kind,w){const one=(day,s)=>({id:0,day,s:s||(TF.s?'k:'+TF.s:SUBJ[0]?'k:'+SUBJ[0][0]:'n:'),pri:'',perr:'',est:'',pg:'',topic:'',wt:''});
 if(kind=='week'){const ps=P.filter(p=>!p.arch&&p.w==w).sort((a,b)=>a.d-b.d||SUBJ.findIndex(s=>s[0]==a.s)-SUBJ.findIndex(s=>s[0]==b.s));
-CE={kind,w,name:`${T('week.n',{n:w})} · ${T('days.range',{a:ord(w,1),b:ord(w,7)})}`,mode:'file',scope:[...Array(7)].map((_,i)=>ord(w,i+1)),week:'all',only:false,rows:ps.map(p=>({id:p.id,day:ord(p.w,p.d),s:'k:'+p.s,pri:p.p||'',perr:'',est:p.est||'',topic:p.t,wt:''}))};if(!CE.rows.length)CE.rows.push(one(ord(w,1)))}
+CE={kind,w,name:`${T('week.n',{n:w})} · ${T('days.range',{a:ord(w,1),b:ord(w,7)})}`,mode:'file',scope:[...Array(7)].map((_,i)=>ord(w,i+1)),week:'all',only:false,rows:ps.map(p=>({id:p.id,day:ord(p.w,p.d),s:'k:'+p.s,pri:p.p||'',perr:'',est:p.est||'',pg:p.pg||'',topic:p.t,wt:''}))};if(!CE.rows.length)CE.rows.push(one(ord(w,1)))}
 else CE={kind,name:T('ce.newName'),mode:'append',week:'all',only:false,rows:[one(BD.day||co())]}}
 function rowErr(r){return!(Number.isInteger(r.day)&&r.day>=1)?T('imp.eDay',{v:Number.isNaN(r.day)?'':r.day}):r.s.length<3?T('imp.eSubj'):r.perr?T('imp.ePri',{v:r.perr}):!String(r.topic).trim()?T('imp.eTopic'):r.est!==''&&r.est!=null&&!(Number.isInteger(r.est)&&r.est>=0)?T('imp.eMin',{v:Number.isNaN(r.est)?r.estRaw:r.est}):''}
 const ceNew=()=>[...new Set(CE.rows.filter(r=>r.s.startsWith('n:')&&r.s.length>2).map(r=>r.s.slice(2)))];
 function ceHtml(){const c=CE,news=ceNew(),nErr=c.rows.filter(rowErr).length,nw=Math.max(1,...c.rows.map(r=>Number.isInteger(r.day)?Math.ceil(r.day/7):1));
 const opts=r=>SUBJ.map(([k])=>`<option value="k:${k}"${r.s=='k:'+k?' selected':''}>${esc(sn(k))}</option>`).join('')+news.map(n=>`<option value="n:${esc(n)}"${r.s=='n:'+n?' selected':''}>★ ${esc(n)} (${T('ce.new')})</option>`).join('')+(r.s.length<3?'<option value="n:" selected>-</option>':'')+(c.kind=='file'?`<option value="__add">+ ${T('ce.addSubj')}</option>`:'');
 const vis=c.rows.map((r,i)=>[r,i]).filter(([r])=>(c.week=='all'||(Number.isInteger(r.day)&&Math.ceil(r.day/7)==+c.week))&&(!c.only||rowErr(r)));
-const body=vis.map(([r,i])=>{const e=rowErr(r);return `<tr class="${e?'bad':''}${r.s.startsWith('n:')&&r.s.length>2?' nsub':''}" data-row="${i}"><td class="n">${i+1}</td><td><input type="number" min="1" class="cday" data-ce="day" data-r="${i}" value="${Number.isInteger(r.day)?r.day:''}" aria-label="${T('b.day')}"></td><td><select data-ce="s" data-r="${i}" aria-label="${T('subject')}">${opts(r)}</select></td><td><input type="text" data-ce="topic" data-r="${i}" value="${esc(r.topic)}" aria-label="${T('topic')}"></td><td><input type="number" min="0" class="cmin" data-ce="est" data-r="${i}" value="${r.est===''||r.est==null||Number.isNaN(r.est)?'':r.est}" placeholder="${r.s.startsWith('k:')&&SMIN[r.s.slice(2)]||''}" aria-label="${T('ce.min')}"></td><td><select data-ce="pri" data-r="${i}" aria-label="${T('priority')}">${priOpts(r.pri)}</select></td><td class="cerr">${esc(e)}</td><td><button class="mini danger" data-act="cedel" data-r="${i}" aria-label="${T('delete')}">✕</button></td></tr>`}).join('');
+const body=vis.map(([r,i])=>{const e=rowErr(r);return `<tr class="${e?'bad':''}${r.s.startsWith('n:')&&r.s.length>2?' nsub':''}" data-row="${i}"><td class="n">${i+1}</td><td><input type="number" min="1" class="cday" data-ce="day" data-r="${i}" value="${Number.isInteger(r.day)?r.day:''}" aria-label="${T('b.day')}"></td><td><select data-ce="s" data-r="${i}" aria-label="${T('subject')}">${opts(r)}</select></td><td><input type="text" data-ce="topic" data-r="${i}" value="${esc(r.topic)}" aria-label="${T('topic')}"></td><td><input type="number" min="0" class="cmin" data-ce="est" data-r="${i}" value="${r.est===''||r.est==null||Number.isNaN(r.est)?'':r.est}" placeholder="${r.s.startsWith('k:')&&SMIN[r.s.slice(2)]||''}" aria-label="${T('ce.min')}"></td><td><input type="text" class="cpg" data-ce="pg" data-r="${i}" value="${esc(r.pg||'')}" aria-label="${T('pg.col')}"></td><td><select data-ce="pri" data-r="${i}" aria-label="${T('priority')}">${priOpts(r.pri)}</select></td><td class="cerr">${esc(e)}</td><td><button class="mini danger" data-act="cedel" data-r="${i}" aria-label="${T('delete')}">✕</button></td></tr>`}).join('');
 return `<div class="overlay"><div class="modal wide xl" role="dialog" aria-modal="true" aria-labelledby="cet"><div class="eyebrow">${c.kind=='file'?T('ce.eyebrow')+' · ':''}${esc(c.name)}</div><h2 id="cet" style="font-size:22px;font-family:Fraunces,Georgia,serif;color:var(--navy-deep);margin-bottom:6px">${c.kind=='week'?T('ce.titleWeek',{w:c.w}):c.kind=='new'?T('ce.titleNew'):T('ce.title')}</h2><p class="paneldesc">${T(c.kind=='week'?'ce.descWeek':c.kind=='new'?'ce.descNew':'ce.desc')}</p>
 <div class="row2" style="margin-top:12px"><span class="chip">${T('ce.rowsN')} <b>${c.rows.length}</b></span><span class="chip${nErr?' err':''}">${T('imp.err')} <b id="ceerr">${nErr}</b></span>${news.length?`<span class="chip">★ ${T('ce.newN')} <b>${news.length}</b></span>`:''}<span class="row2" style="margin-left:auto"><label class="paneldesc">${T('week.n',{n:''}).trim()} <select id="cew"><option value="all">${T('ce.allWeeks')}</option>${Array.from({length:nw},(_,i)=>`<option value="${i+1}"${c.week==i+1?' selected':''}>${i+1}</option>`).join('')}</select></label><label class="paneldesc row2"><input type="checkbox" id="ceo"${c.only?' checked':''}> ${T('ce.onlyErr')}</label></span></div>
 ${news.length?`<div class="cenew"><b>★ ${T('ce.newTitle',{n:news.length})}</b><p class="paneldesc" style="margin:2px 0 8px">${T('ce.newDesc')}</p>${news.map(n=>`<div class="row2 cenrow"><span class="tag">${esc(n)}</span><span class="paneldesc">${T('ce.used',{n:c.rows.filter(r=>r.s=='n:'+n).length})}</span><select data-cemap="${esc(n)}" aria-label="${esc(n)}"><option value="">${T('ce.create')}</option>${SUBJ.map(([k])=>`<option value="k:${k}">→ ${esc(sn(k))}</option>`).join('')}</select></div>`).join('')}</div>`:''}
-<div class="mbody"><table class="cetable"><thead><tr><th>#</th><th>${T('b.day')}</th><th>${T('subject')}</th><th>${T('topic')}</th><th>${T('ce.min')}</th><th>${T('priority')}</th><th></th><th></th></tr></thead><tbody>${body||`<tr><td colspan="8" class="empty">${T('nothing')}</td></tr>`}</tbody></table></div>
+<div class="mbody"><table class="cetable"><thead><tr><th>#</th><th>${T('b.day')}</th><th>${T('subject')}</th><th>${T('topic')}</th><th>${T('ce.min')}</th><th>${T('pg.col')}</th><th>${T('priority')}</th><th></th><th></th></tr></thead><tbody>${body||`<tr><td colspan="9" class="empty">${T('nothing')}</td></tr>`}</tbody></table></div>
 <div class="row2" style="margin-top:14px;justify-content:space-between"><button class="secondary" data-act="ceadd">+ ${T('ce.addRow')}</button><span class="row2"><button class="secondary" data-act="ceno">${T('cancel')}</button><button class="primary" data-act="cenext">${T('ce.next')} →</button></span></div></div></div>`}
 function ceToImp(){const ok=[],errs=[];CE.rows.forEach((r,i)=>{const e=rowErr(r);if(e)return errs.push({n:i+1,m:e});
-ok.push({n:i+1,id:r.id,w:Math.ceil(r.day/7),d:(r.day-1)%7+1,s:r.s.startsWith('k:')?r.s.slice(2):'new:'+r.s.slice(2),p:r.pri,est:r.est>0?r.est:0,t:String(r.topic).trim(),wt:r.wt||''})});
+ok.push({n:i+1,id:r.id,w:Math.ceil(r.day/7),d:(r.day-1)%7+1,s:r.s.startsWith('k:')?r.s.slice(2):'new:'+r.s.slice(2),p:r.pri,est:r.est>0?r.est:0,pg:String(r.pg||'').trim(),t:String(r.topic).trim(),wt:r.wt||''})});
 return{name:CE.name,errs,ok,mode:CE.mode,off:new Set(),fromCE:true,kind:CE.kind,scope:CE.scope}}
 // live edits in the table without redrawing it (keeps the cursor where it is)
 function ceInput(el){const r=CE.rows[+el.dataset.r],f=el.dataset.ce;if(!r)return;
-if(f=='day')r.day=el.value===''?NaN:num(el.value);else if(f=='est'){r.est=el.value===''?'':num(el.value);r.estRaw=el.value}else if(f=='topic')r.topic=el.value;else if(f=='pri'){r.pri=el.value;r.perr=''}
+if(f=='day')r.day=el.value===''?NaN:num(el.value);else if(f=='est'){r.est=el.value===''?'':num(el.value);r.estRaw=el.value}else if(f=='topic')r.topic=el.value;else if(f=='pg')r.pg=el.value;else if(f=='pri'){r.pri=el.value;r.perr=''}
 else if(f=='s'){if(el.value=='__add'){const n=(prompt(T('ce.addPrompt'))||'').trim();if(n){const k=subjKey(n);r.s=k?'k:'+k:'n:'+n}render();return}const was=r.s;r.s=el.value;if(was.startsWith('n:')||r.s.startsWith('n:')){render();return}}
 const tr=el.closest('tr'),e=rowErr(r);tr.classList.toggle('bad',!!e);tr.querySelector('.cerr').textContent=e;const c=$('#ceerr');if(c)c.textContent=CE.rows.filter(rowErr).length}
 
@@ -241,7 +243,7 @@ function impPlan(m){const used=new Set(),add=[],chg=[],same=[];
 m.ok.forEach(r=>{let p=r.id?P.find(x=>x.id==r.id&&!used.has(x.id)):null;
 if(!p)p=P.find(x=>!used.has(x.id)&&!x.arch&&x.w==r.w&&x.d==r.d&&x.s==r.s&&x.t==r.t);
 if(!p)return add.push(r);used.add(p.id);const f=[];
-if(p.t!=r.t)f.push([T('topic'),p.t,r.t]);if(p.w!=r.w||p.d!=r.d)f.push([T('b.day'),lab(p.w,p.d),lab(r.w,r.d)]);if(p.s!=r.s)f.push([T('subject'),sn(p.s,p.w),sn(r.s,r.w)]);if((p.p||'')!=r.p)f.push([T('priority'),p.p||'-',r.p||'-']);if((p.est||0)!=(r.est||0))f.push([T('ce.min'),p.est||'-',r.est||'-']);if(p.arch)f.push([T('archive'),T('imp.archived'),T('imp.back')]);
+if(p.t!=r.t)f.push([T('topic'),p.t,r.t]);if(p.w!=r.w||p.d!=r.d)f.push([T('b.day'),lab(p.w,p.d),lab(r.w,r.d)]);if(p.s!=r.s)f.push([T('subject'),sn(p.s,p.w),sn(r.s,r.w)]);if((p.p||'')!=r.p)f.push([T('priority'),p.p||'-',r.p||'-']);if((p.est||0)!=(r.est||0))f.push([T('ce.min'),p.est||'-',r.est||'-']);if((p.pg||'')!=(r.pg||''))f.push([T('pg.col'),p.pg||'-',r.pg||'-']);if(p.arch)f.push([T('archive'),T('imp.archived'),T('imp.back')]);
 f.length?chg.push({r,p,f}):same.push(r)});
 const days=new Set(m.scope||m.ok.map(r=>ord(r.w,r.d)));
 const del=m.mode=='append'?[]:P.filter(p=>!p.arch&&!used.has(p.id)&&(m.mode=='all'||days.has(ord(p.w,p.d))));
@@ -267,8 +269,8 @@ ${m.kind&&m.kind!='file'?`<p class="paneldesc" style="margin-top:12px">${T(m.kin
 <div class="row2" style="margin-top:14px;justify-content:space-between"><span class="paneldesc" style="flex:1;min-width:200px">${T('imp.foot')}</span><span class="row2">${m.fromCE?`<button class="secondary" data-act="ceback">← ${T('ce.back')}</button>`:''}<button class="secondary" data-act="impno">${T('cancel')}</button><button class="primary" data-act="impgo"${none?' disabled':''}>${T('imp.apply')}</button></span></div></div></div>`}
 function impApply(){const S=k=>k.startsWith('new:')?getSubj(k.slice(4)):k,m=imp,pl=impPlan(m),ap=m.mode=='append',on=k=>!m.off.has(k);let a=0,c=0,r=0;
 ensureWeeks(Math.max(0,...m.ok.map(x=>x.w)));impWT(m).forEach(([w,,v])=>WT[w]=v);
-pl.add.forEach((x,i)=>{if(!on('a'+i))return;P.push({id:++uid,w:x.w,d:x.d,s:S(x.s),t:x.t,p:x.p,est:x.est||0,ow:x.w,od:x.d,arch:false,from:''});a++});
-if(!ap)pl.chg.forEach(({r:x,p})=>{if(!on('c'+p.id))return;if(p.w!=x.w||p.d!=x.d)p.from=lab(p.w,p.d);Object.assign(p,{t:x.t,s:S(x.s),p:x.p,est:x.est||0,w:x.w,d:x.d,arch:false});c++});
+pl.add.forEach((x,i)=>{if(!on('a'+i))return;P.push({id:++uid,w:x.w,d:x.d,s:S(x.s),t:x.t,p:x.p,est:x.est||0,pg:x.pg||'',ow:x.w,od:x.d,arch:false,from:''});a++});
+if(!ap)pl.chg.forEach(({r:x,p})=>{if(!on('c'+p.id))return;if(p.w!=x.w||p.d!=x.d)p.from=lab(p.w,p.d);Object.assign(p,{t:x.t,s:S(x.s),p:x.p,est:x.est||0,pg:x.pg||'',w:x.w,d:x.d,arch:false});c++});
 pl.del.forEach(p=>{if(on('r'+p.id)){p.arch=true;r++}});
 const cw={};[...pl.add,...pl.chg.map(x=>x.r)].forEach(x=>cw[x.w]=(cw[x.w]||0)+1);imp=null;CE=null;toast(T('imp.done',{a,c,r}),1);return +Object.keys(cw).sort((x,y)=>cw[y]-cw[x])[0]||0}
 
